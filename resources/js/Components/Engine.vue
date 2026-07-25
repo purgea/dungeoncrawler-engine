@@ -226,7 +226,8 @@ function start() {
 
     resizeObserver = new ResizeObserver(resizeCanvasToViewport);
     resizeObserver.observe(viewport.value);
-    app.value.scene.ambientLight = new pc.Color(0.42, 0.39, 0.33);
+    // Keep the dungeon readable, but let local light sources define the scene.
+    app.value.scene.ambientLight = new pc.Color(0.085, 0.075, 0.065);
 
     const dungeon = dungeonComponent.value;
     const { grid, startRoom, door, spawn } = dungeon.generateDungeon();
@@ -263,7 +264,6 @@ function start() {
     shinyObject.setLocalScale(0.8, 0.8, 0.8);
     app.value.root.addChild(shinyObject);
 
-    cameraComponent.value.addLight(app.value);
     installInput(canvas);
     app.value.on('update', updateMovement);
 }

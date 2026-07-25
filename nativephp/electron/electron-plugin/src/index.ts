@@ -93,10 +93,6 @@ class NativePHP {
 
         const config = await this.loadConfig();
 
-        session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-            callback(['pointerLock', 'pointer-lock', 'keyboardLock', 'keyboard-lock'].includes(permission));
-        });
-
         this.setDockIcon();
         this.setAppUserModelId(config);
         this.setDeepLinkHandler(config);

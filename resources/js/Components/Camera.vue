@@ -81,19 +81,6 @@ function getRotation() {
     return { yaw, pitch };
 }
 
-function addLight(appInstance) {
-    const light = new pc.Entity('player-light');
-    light.addComponent('light', {
-        type: 'omni',
-        color: new pc.Color(1, 0.9, 0.72),
-        intensity: 1.65,
-        range: 18,
-        castShadows: false,
-    });
-    light.setLocalPosition(0, 0.25, 0);
-    camera?.addChild(light);
-}
-
 function dispose() {
     camera?.destroy?.();
     camera = null;
@@ -105,7 +92,6 @@ defineExpose({
     moveWithCollision,
     getCamera,
     getRotation,
-    addLight,
     dispose,
 });
 </script>

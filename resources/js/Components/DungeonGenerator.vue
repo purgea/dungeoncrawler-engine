@@ -252,7 +252,7 @@ function createMaterial(texture) {
     material.diffuseMap = texture;
     material.diffuseMapTiling.set(1, 1);
     material.diffuse.set(0.95, 0.92, 0.82);
-    material.ambient.set(0.55, 0.52, 0.46);
+    material.ambient.set(0.24, 0.22, 0.19);
     material.update();
 
     return material;
@@ -305,9 +305,68 @@ function addBox(appInstance, name, position, scale, material) {
     return entity;
 }
 
+function createTorchMaterials() {
+    const metal = new pc.StandardMaterial();
+    metal.diffuse.set(0.12, 0.09, 0.06);
+    metal.metalness = 0.65;
+    metal.shininess = 70;
+    metal.update();
+
+    const wood = new pc.StandardMaterial();
+    wood.diffuse.set(0.2, 0.09, 0.035);
+    wood.ambient.set(0.08, 0.035, 0.015);
+    wood.update();
+
+    const flame = new pc.StandardMaterial();
+    flame.diffuse.set(1, 0.3, 0.025);
+    flame.emissive.set(1, 0.18, 0.015);
+    flame.emissiveIntensity = 4;
+    flame.update();
+
+    return { metal, wood, flame };
+}
+
+function addTorch(appInstance, position, edge, materials) {
+    const torch = new pc.Entity('wall-torch');
+    torch.setLocalPosition(position.x, position.y, position.z);
+
+    const bracket = new pc.Entity('torch-bracket');
+    bracket.addComponent('render', { type: 'box', material: materials.metal });
+    bracket.setLocalScale(edge.dx === 0 ? 0.26 : 0.46, 0.16, edge.dy === 0 ? 0.26 : 0.46);
+    torch.addChild(bracket);
+
+    const handle = new pc.Entity('torch-handle');
+    handle.addComponent('render', { type: 'cylinder', material: materials.wood });
+    handle.setLocalPosition(-edge.dx * 0.28, 0.28, -edge.dy * 0.28);
+    handle.setLocalScale(0.14, 0.68, 0.14);
+    handle.setLocalEulerAngles(edge.dy * -22, 0, edge.dx * 22);
+    torch.addChild(handle);
+
+    const flame = new pc.Entity('torch-flame');
+    flame.addComponent('render', { type: 'sphere', material: materials.flame });
+    flame.setLocalPosition(-edge.dx * 0.52, 0.78, -edge.dy * 0.52);
+    flame.setLocalScale(0.24, 0.42, 0.24);
+    torch.addChild(flame);
+
+    const light = new pc.Entity('torch-light');
+    light.addComponent('light', {
+        type: 'omni',
+        color: new pc.Color(1, 0.34, 0.075),
+        intensity: 2.15,
+        range: 10,
+        castShadows: false,
+    });
+    light.setLocalPosition(-edge.dx * 0.72, 0.75, -edge.dy * 0.72);
+    torch.addChild(light);
+    appInstance.root.addChild(torch);
+}
+
 function buildDungeon(appInstance, grid, material, door, doorMaterial, recessMaterial, archMaterial) {
     const floorThickness = 0.16;
     const wallThickness = 0.28;
+    const torchMaterials = createTorchMaterials();
+    const torchTiles = Array.from({ length: dungeonFloors }, () => []);
+    const torchCounts = Array(dungeonFloors).fill(0);
 
     for (let floor = 0; floor < dungeonFloors; floor += 1) {
         const elevation = floor * (wallHeight + 0.4);
@@ -323,13 +382,8 @@ function buildDungeon(appInstance, grid, material, door, doorMaterial, recessMat
                 addBox(appInstance, 'ceiling', { x: pos.x, y: elevation + wallHeight, z: pos.z }, { x: tileSize, y: floorThickness, z: tileSize }, material);
 
                 if (grid[floor][y][x] === 2) {
-                    addBox(
-                        appInstance,
-                        'stairs-marker',
-                        { x: pos.x, y: elevation + 0.18, z: pos.z },
-                        { x: tileSize * 0.5, y: 0.36, z: tileSize * 0.5 },
-                        archMaterial || material,
-                    );
+                    // Stair tiles remain walkable without the old raised placeholder
+                    // slab, which could overlap the player's starting tile.
                     continue;
                 }
 
@@ -433,6 +487,24 @@ function buildDungeon(appInstance, grid, material, door, doorMaterial, recessMat
                             { x: edge.sx, y: wallHeight, z: edge.sz },
                             material,
                         );
+
+                        const isFarEnough = torchTiles[floor].every(
+                            (tile) => Math.abs(tile.x - x) + Math.abs(tile.y - y) >= 3,
+                        );
+                        if (torchCounts[floor] < 18 && isFarEnough && Math.random() < 0.1) {
+                            addTorch(
+                                appInstance,
+                                {
+                                    x: pos.x + edge.px - edge.dx * 0.12,
+                                    y: elevation + wallHeight * 0.42,
+                                    z: pos.z + edge.pz - edge.dy * 0.12,
+                                },
+                                edge,
+                                torchMaterials,
+                            );
+                            torchTiles[floor].push({ x, y });
+                            torchCounts[floor] += 1;
+                        }
                     }
                 });
             }
