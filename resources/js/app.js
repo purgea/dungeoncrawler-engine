@@ -15,5 +15,3 @@ createInertiaApp({
             .mount(el);
     },
 });
-
-createInertiaApp()
