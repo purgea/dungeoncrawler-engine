@@ -38,7 +38,63 @@ function tileAtWorldPosition(x, z, collisionGrid, dungeonWidth, dungeonHeight, t
     return { x: tileX, y: tileY, cell: collisionGrid[tileY]?.[tileX] };
 }
 
-function isWalkableWorldPosition(x, z, collisionGrid, dungeonWidth, dungeonHeight, tileSize, fromTile) {
+function rampSidePenetration(x, z, collisionGrid, dungeonWidth, dungeonHeight, tileSize) {
+    let penetration = 0;
+    const wallThickness = 0.28;
+    const innerWallEdge = tileSize / 2 - wallThickness;
+
+    for (let tileY = 0; tileY < collisionGrid.length; tileY += 1) {
+        for (let tileX = 0; tileX < (collisionGrid[tileY]?.length || 0); tileX += 1) {
+            const cell = collisionGrid[tileY][tileX];
+            if (cell?.type !== 'vertical-corridor') {
+                continue;
+            }
+
+            const centerX = (tileX - dungeonWidth / 2) * tileSize;
+            const centerZ = (tileY - dungeonHeight / 2) * tileSize;
+            const relativeX = x - centerX;
+            const relativeZ = z - centerZ;
+            const along = relativeX * cell.direction.x + relativeZ * cell.direction.y;
+            const across = Math.abs(relativeX * -cell.direction.y + relativeZ * cell.direction.x);
+
+            if (Math.abs(along) > tileSize / 2 + props.playerRadius) {
+                continue;
+            }
+
+            const overlap = across + props.playerRadius - innerWallEdge;
+            if (overlap > 0 && across < tileSize / 2 + wallThickness + props.playerRadius) {
+                penetration = Math.max(penetration, overlap);
+            }
+        }
+    }
+
+    return penetration;
+}
+
+function isWalkableWorldPosition(x, z, collisionGrid, dungeonWidth, dungeonHeight, tileSize, fromTile, fromPosition) {
+    const nextRampPenetration = rampSidePenetration(
+        x,
+        z,
+        collisionGrid,
+        dungeonWidth,
+        dungeonHeight,
+        tileSize,
+    );
+    const currentRampPenetration = fromPosition
+        ? rampSidePenetration(
+            fromPosition.x,
+            fromPosition.z,
+            collisionGrid,
+            dungeonWidth,
+            dungeonHeight,
+            tileSize,
+        )
+        : 0;
+
+    if (nextRampPenetration > 0 && nextRampPenetration >= currentRampPenetration) {
+        return false;
+    }
+
     const samples = [
         { x, z },
         { x: x - props.playerRadius, z: z - props.playerRadius },
@@ -106,14 +162,32 @@ function moveWithCollision(deltaX, deltaZ, collisionGrid, dungeonWidth, dungeonH
     let nextX = position.x + deltaX;
     let nextZ = position.z;
 
-    if (!isWalkableWorldPosition(nextX, nextZ, collisionGrid, dungeonWidth, dungeonHeight, tileSize, current)) {
+    if (!isWalkableWorldPosition(
+        nextX,
+        nextZ,
+        collisionGrid,
+        dungeonWidth,
+        dungeonHeight,
+        tileSize,
+        current,
+        position,
+    )) {
         nextX = position.x;
     }
 
     nextZ = position.z + deltaZ;
 
     const afterX = tileAtWorldPosition(nextX, nextZ, collisionGrid, dungeonWidth, dungeonHeight, tileSize);
-    if (!isWalkableWorldPosition(nextX, nextZ, collisionGrid, dungeonWidth, dungeonHeight, tileSize, afterX.cell ? afterX : current)) {
+    if (!isWalkableWorldPosition(
+        nextX,
+        nextZ,
+        collisionGrid,
+        dungeonWidth,
+        dungeonHeight,
+        tileSize,
+        afterX.cell ? afterX : current,
+        { x: nextX, z: position.z },
+    )) {
         nextZ = position.z;
     }
 
