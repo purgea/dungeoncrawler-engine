@@ -25,7 +25,7 @@ let resizeObserver = null;
 
 function draw() {
     const element = canvas.value;
-    const floorGrid = props.grid[props.player?.floor ?? 0];
+    const floorGrid = props.grid;
     if (!element || !floorGrid?.length) {
         return;
     }
@@ -65,11 +65,12 @@ function draw() {
 
     for (const key of props.explored) {
         const [tileFloor, x, y] = key.split(':').map(Number);
-        if (tileFloor !== floor || !floorGrid[y]?.[x]) {
+        const cell = floorGrid[y]?.[x];
+        if (tileFloor !== floor || !cell?.walkable || cell.floor !== floor) {
             continue;
         }
 
-        ctx.fillStyle = floorGrid[y][x] === 2 ? '#91845b' : '#4f574b';
+        ctx.fillStyle = cell.type === 'vertical-corridor' ? '#91845b' : '#4f574b';
         ctx.fillRect(
             x * cellWidth + 0.35 * pixelRatio,
             y * cellHeight + 0.35 * pixelRatio,

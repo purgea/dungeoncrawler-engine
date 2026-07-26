@@ -3,7 +3,7 @@ import * as pc from 'playcanvas';
 
 const dungeonWidth = 63;
 const dungeonHeight = 63;
-const dungeonFloors = 3;
+const floorElevations = [0, 10, -10];
 const tileSize = 4;
 const wallHeight = 3.3;
 
@@ -24,10 +24,21 @@ function intersects(a, b) {
     );
 }
 
+function createCell(floor, type = 'floor', elevation = floor) {
+    return {
+        walkable: true,
+        type,
+        floor,
+        elevation,
+        slope: 0,
+        direction: { x: 0, y: 0 },
+    };
+}
+
 function carveRoom(grid, room) {
     for (let y = room.y; y < room.y + room.h; y += 1) {
         for (let x = room.x; x < room.x + room.w; x += 1) {
-            grid[room.floor][y][x] = 1;
+            grid[y][x] = createCell(room.floor);
         }
     }
 }
@@ -36,12 +47,12 @@ function carveCorridor(grid, from, to) {
     const horizontalFirst = Math.random() > 0.5;
     const carveX = (x1, x2, y) => {
         for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x += 1) {
-            grid[from.floor][y][x] = 1;
+            grid[y][x] = createCell(from.floor);
         }
     };
     const carveY = (y1, y2, x) => {
         for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y += 1) {
-            grid[from.floor][y][x] = 1;
+            grid[y][x] = createCell(from.floor);
         }
     };
 
@@ -54,38 +65,58 @@ function carveCorridor(grid, from, to) {
     }
 }
 
-function carveStairs(grid, fromRoom, toRoom) {
-    const from = {
-        floor: fromRoom.floor,
-        x: Math.floor(fromRoom.x + fromRoom.w / 2),
-        y: Math.floor(fromRoom.y + fromRoom.h / 2),
-    };
-    const to = {
-        floor: toRoom.floor,
-        x: Math.floor(toRoom.x + toRoom.w / 2),
-        y: Math.floor(toRoom.y + toRoom.h / 2),
-    };
+function carveVerticalCorridor(grid, from, to) {
+    const distance = Math.abs(to.x - from.x) + Math.abs(to.y - from.y);
+    const elevationDelta = to.floor - from.floor;
+    const corridorTileCount = distance + 1;
+    const slope = Math.atan2(elevationDelta, corridorTileCount * tileSize) / pc.math.DEG_TO_RAD;
+    const stepX = Math.sign(to.x - from.x);
+    const stepY = Math.sign(to.y - from.y);
 
-    grid[from.floor][from.y][from.x] = 2;
-    grid[to.floor][to.y][to.x] = 2;
+    if (Math.abs(slope) > 60) {
+        throw new Error(`Vertical corridor slope ${Math.abs(slope).toFixed(1)} exceeds 60 degrees.`);
+    }
 
-    return { from, to };
+    for (let step = 0; step <= distance; step += 1) {
+        const progress = (step + 0.5) / corridorTileCount;
+        const x = from.x + stepX * Math.min(step, Math.abs(to.x - from.x));
+        const y = from.y + stepY * Math.max(0, step - Math.abs(to.x - from.x));
+        const cell = createCell(
+            progress < 0.5 ? from.floor : to.floor,
+            'vertical-corridor',
+            from.floor + elevationDelta * progress,
+        );
+        cell.slope = slope;
+        cell.direction = { x: stepX, y: stepY };
+        grid[y][x] = cell;
+    }
 }
 
 function generateDungeon() {
-    const grid = Array.from({ length: dungeonFloors }, () =>
-        Array.from({ length: dungeonHeight }, () => Array(dungeonWidth).fill(0)),
-    );
-    const rooms = [];
+    const grid = Array.from({ length: dungeonHeight }, () => Array(dungeonWidth).fill(null));
+    const upperConnectorY = randomInt(8, 25);
+    const lowerConnectorY = randomInt(35, 53);
+    const floorRegions = [
+        { floor: 0, minX: 2, maxX: 20 },
+        { floor: 10, minX: 24, maxX: 40 },
+        { floor: -10, minX: 44, maxX: dungeonWidth - 3 },
+    ];
+    const rooms = [
+        { floor: 0, x: 16, y: upperConnectorY - 3, w: 5, h: 7, gateway: true },
+        { floor: 10, x: 24, y: upperConnectorY - 3, w: 5, h: 7, gateway: true },
+        { floor: 10, x: 36, y: lowerConnectorY - 3, w: 5, h: 7, gateway: true },
+        { floor: -10, x: 44, y: lowerConnectorY - 3, w: 5, h: 7, gateway: true },
+    ];
+    rooms.forEach((room) => carveRoom(grid, room));
 
-    for (let floor = 0; floor < dungeonFloors; floor += 1) {
-        for (let attempt = 0; attempt < 140 && rooms.filter((room) => room.floor === floor).length < 8; attempt += 1) {
+    floorRegions.forEach((region) => {
+        for (let attempt = 0; attempt < 180 && rooms.filter((room) => room.floor === region.floor).length < 8; attempt += 1) {
             const room = {
-                floor,
-                w: randomInt(4, 10),
-                h: randomInt(4, 10),
-                x: randomInt(2, dungeonWidth - 12),
-                y: randomInt(2, dungeonHeight - 12),
+                floor: region.floor,
+                w: randomInt(4, Math.min(8, region.maxX - region.minX - 1)),
+                h: randomInt(4, 9),
+                x: randomInt(region.minX, region.maxX - 7),
+                y: randomInt(2, dungeonHeight - 11),
             };
 
             if (rooms.some((existing) => intersects(room, existing))) {
@@ -95,42 +126,36 @@ function generateDungeon() {
             carveRoom(grid, room);
             rooms.push(room);
         }
-    }
+    });
 
-    if (!rooms.length) {
-        const room = {
-            floor: 0,
-            x: 8,
-            y: 8,
-            w: 10,
-            h: 10,
-        };
-        carveRoom(grid, room);
-        rooms.push(room);
-    }
-
-    rooms
-        .filter((room) => room.floor === 0)
-        .map((room) => ({
-            floor: room.floor,
-            x: Math.floor(room.x + room.w / 2),
-            y: Math.floor(room.y + room.h / 2),
-        }))
-        .forEach((center, index, centers) => {
-            if (index > 0) {
-                carveCorridor(grid, centers[index - 1], center);
-            }
+    floorElevations.forEach((floor) => {
+        const centers = rooms
+            .filter((room) => room.floor === floor)
+            .map((room) => ({
+                floor,
+                x: Math.floor(room.x + room.w / 2),
+                y: Math.floor(room.y + room.h / 2),
+            }));
+        centers.forEach((center, index) => {
+            if (index > 0) carveCorridor(grid, centers[index - 1], center);
         });
+    });
 
-    for (let floor = 0; floor < dungeonFloors - 1; floor += 1) {
-        const floorRooms = rooms.filter((room) => room.floor === floor);
-        const nextFloorRooms = rooms.filter((room) => room.floor === floor + 1);
-        if (floorRooms.length && nextFloorRooms.length) {
-            carveStairs(grid, floorRooms[0], nextFloorRooms[0]);
-        }
-    }
+    carveVerticalCorridor(
+        grid,
+        { x: 20, y: upperConnectorY, floor: 0 },
+        { x: 24, y: upperConnectorY, floor: 10 },
+    );
+    carveVerticalCorridor(
+        grid,
+        { x: 40, y: lowerConnectorY, floor: 10 },
+        { x: 44, y: lowerConnectorY, floor: -10 },
+    );
 
-    const startRoom = rooms.find((room) => room.floor === 0) || rooms[0];
+    const startRooms = rooms.filter((room) => room.floor === 0 && !room.gateway);
+    const startRoom = startRooms[randomInt(0, startRooms.length - 1)] ||
+        rooms.find((room) => room.floor === 0) ||
+        rooms[0];
     const spawn = {
         x: Math.floor(startRoom.x + startRoom.w / 2),
         y: Math.floor(startRoom.y + startRoom.h / 2),
@@ -160,7 +185,7 @@ function generateDungeon() {
 function worldPosition(x, y, floor = 0) {
     return {
         x: (x - dungeonWidth / 2) * tileSize,
-        y: floor * (wallHeight + 0.4),
+        y: floor,
         z: (y - dungeonHeight / 2) * tileSize,
     };
 }
@@ -292,7 +317,7 @@ function createArchMaterial(texture) {
     return material;
 }
 
-function addBox(appInstance, name, position, scale, material) {
+function addBox(appInstance, name, position, scale, material, rotation = null) {
     const entity = new pc.Entity(name);
     entity.addComponent('render', {
         type: 'box',
@@ -300,6 +325,9 @@ function addBox(appInstance, name, position, scale, material) {
     });
     entity.setLocalPosition(position.x, position.y, position.z);
     entity.setLocalScale(scale.x, scale.y, scale.z);
+    if (rotation) {
+        entity.setLocalEulerAngles(rotation.x || 0, rotation.y || 0, rotation.z || 0);
+    }
     appInstance.root.addChild(entity);
 
     return entity;
@@ -365,29 +393,199 @@ function buildDungeon(appInstance, grid, material, door, doorMaterial, recessMat
     const floorThickness = 0.16;
     const wallThickness = 0.28;
     const torchMaterials = createTorchMaterials();
-    const torchTiles = Array.from({ length: dungeonFloors }, () => []);
-    const torchCounts = Array(dungeonFloors).fill(0);
+    const torchTiles = new Map(floorElevations.map((floor) => [floor, []]));
+    const torchCounts = new Map(floorElevations.map((floor) => [floor, 0]));
+    const verticalCorridors = [];
 
-    for (let floor = 0; floor < dungeonFloors; floor += 1) {
-        const elevation = floor * (wallHeight + 0.4);
+    for (let y = 0; y < dungeonHeight; y += 1) {
+        for (let x = 0; x < dungeonWidth; x += 1) {
+            if (grid[y][x]?.type !== 'vertical-corridor') {
+                continue;
+            }
 
-        for (let y = 0; y < dungeonHeight; y += 1) {
-            for (let x = 0; x < dungeonWidth; x += 1) {
-                if (grid[floor][y][x] === 0) {
-                    continue;
-                }
+            const previousIsSameCorridor = grid[y][x].direction.x
+                ? grid[y][x - grid[y][x].direction.x]?.type === 'vertical-corridor'
+                : grid[y - grid[y][x].direction.y]?.[x]?.type === 'vertical-corridor';
+            if (previousIsSameCorridor) {
+                continue;
+            }
 
-                const pos = worldPosition(x, y, floor);
-                addBox(appInstance, 'floor', { x: pos.x, y: elevation - floorThickness / 2, z: pos.z }, { x: tileSize, y: floorThickness, z: tileSize }, material);
-                addBox(appInstance, 'ceiling', { x: pos.x, y: elevation + wallHeight, z: pos.z }, { x: tileSize, y: floorThickness, z: tileSize }, material);
+            const cells = [];
+            let cursorX = x;
+            let cursorY = y;
+            while (grid[cursorY]?.[cursorX]?.type === 'vertical-corridor') {
+                cells.push({ x: cursorX, y: cursorY, cell: grid[cursorY][cursorX] });
+                cursorX += grid[y][x].direction.x;
+                cursorY += grid[y][x].direction.y;
+            }
+            verticalCorridors.push(cells);
+        }
+    }
 
-                if (grid[floor][y][x] === 2) {
-                    // Stair tiles remain walkable without the old raised placeholder
-                    // slab, which could overlap the player's starting tile.
-                    continue;
-                }
+    verticalCorridors.forEach((cells) => {
+        const first = cells[0];
+        const last = cells[cells.length - 1];
+        const direction = first.cell.direction;
+        const slopeRadians = first.cell.slope * pc.math.DEG_TO_RAD;
+        const horizontalLength = cells.length * tileSize;
+        const elevationChange = Math.tan(slopeRadians) * horizontalLength;
+        const startElevation = first.cell.elevation - elevationChange / cells.length / 2;
+        const endElevation = last.cell.elevation + elevationChange / cells.length / 2;
+        const start = worldPosition(first.x, first.y, startElevation);
+        const end = worldPosition(last.x, last.y, endElevation);
+        const center = {
+            x: (start.x + end.x) / 2,
+            y: (startElevation + endElevation) / 2,
+            z: (start.z + end.z) / 2,
+        };
+        const slopedLength = Math.hypot(horizontalLength, endElevation - startElevation) + 0.12;
+        const rotation = {
+            x: direction.y ? -first.cell.slope * direction.y : 0,
+            y: 0,
+            z: direction.x ? first.cell.slope * direction.x : 0,
+        };
+        const corridorScale = {
+            x: direction.x ? slopedLength : tileSize + 0.08,
+            y: floorThickness,
+            z: direction.y ? slopedLength : tileSize + 0.08,
+        };
 
-                if (door && floor === door.floor && x === door.x && y === door.y) {
+        addBox(
+            appInstance,
+            'vertical-corridor-floor',
+            { x: center.x, y: center.y - Math.cos(slopeRadians) * floorThickness / 2, z: center.z },
+            corridorScale,
+            material,
+            rotation,
+        );
+        addBox(
+            appInstance,
+            'vertical-corridor-ceiling',
+            { x: center.x, y: center.y + wallHeight + Math.cos(slopeRadians) * floorThickness / 2, z: center.z },
+            corridorScale,
+            material,
+            rotation,
+        );
+
+        const risePerTile = Math.abs(elevationChange / cells.length);
+        cells.forEach(({ x, y, cell }) => {
+            const section = worldPosition(x, y, cell.elevation);
+            const sectionHeight = wallHeight + risePerTile + 0.16;
+
+            [
+                { x: -direction.y * tileSize / 2, z: direction.x * tileSize / 2 },
+                { x: direction.y * tileSize / 2, z: -direction.x * tileSize / 2 },
+            ].forEach((offset) => {
+                addBox(
+                    appInstance,
+                    'vertical-corridor-wall-infill',
+                    {
+                        x: section.x + offset.x,
+                        y: cell.elevation + wallHeight / 2,
+                        z: section.z + offset.z,
+                    },
+                    {
+                        x: direction.x ? tileSize + 0.16 : wallThickness * 1.8,
+                        y: sectionHeight,
+                        z: direction.y ? tileSize + 0.16 : wallThickness * 1.8,
+                    },
+                    material,
+                );
+            });
+        });
+
+        const landingOverlap = 1.1;
+        const landings = [
+            {
+                x: start.x - direction.x * tileSize / 2,
+                y: startElevation,
+                z: start.z - direction.y * tileSize / 2,
+            },
+            {
+                x: end.x + direction.x * tileSize / 2,
+                y: endElevation,
+                z: end.z + direction.y * tileSize / 2,
+            },
+        ];
+
+        landings.forEach((landing) => {
+            const thresholdScale = {
+                x: direction.x ? landingOverlap : tileSize + 0.18,
+                y: floorThickness + 0.04,
+                z: direction.y ? landingOverlap : tileSize + 0.18,
+            };
+
+            addBox(
+                appInstance,
+                'vertical-corridor-floor-filler',
+                { x: landing.x, y: landing.y - thresholdScale.y / 2, z: landing.z },
+                thresholdScale,
+                material,
+            );
+            addBox(
+                appInstance,
+                'vertical-corridor-ceiling-filler',
+                { x: landing.x, y: landing.y + wallHeight + thresholdScale.y / 2, z: landing.z },
+                thresholdScale,
+                material,
+            );
+
+            [
+                { x: -direction.y * tileSize / 2, z: direction.x * tileSize / 2 },
+                { x: direction.y * tileSize / 2, z: -direction.x * tileSize / 2 },
+            ].forEach((offset) => {
+                addBox(
+                    appInstance,
+                    'vertical-corridor-wall-filler',
+                    {
+                        x: landing.x + offset.x,
+                        y: landing.y + wallHeight / 2,
+                        z: landing.z + offset.z,
+                    },
+                    {
+                        x: direction.x ? landingOverlap : wallThickness * 1.8,
+                        y: wallHeight + 0.12,
+                        z: direction.y ? landingOverlap : wallThickness * 1.8,
+                    },
+                    material,
+                );
+            });
+        });
+    });
+
+    for (let y = 0; y < dungeonHeight; y += 1) {
+        for (let x = 0; x < dungeonWidth; x += 1) {
+            const cell = grid[y][x];
+            if (!cell?.walkable) {
+                continue;
+            }
+            if (cell.type === 'vertical-corridor') {
+                continue;
+            }
+
+            const elevation = cell.elevation;
+            const pos = worldPosition(x, y, elevation);
+            const rotation = null;
+            const slopeRadians = 0;
+            const tileScale = { x: tileSize, y: floorThickness, z: tileSize };
+            addBox(
+                appInstance,
+                cell.type,
+                { x: pos.x, y: elevation - Math.cos(slopeRadians) * floorThickness / 2, z: pos.z },
+                tileScale,
+                material,
+                rotation,
+            );
+            addBox(
+                appInstance,
+                'ceiling',
+                { x: pos.x, y: elevation + wallHeight + Math.cos(slopeRadians) * floorThickness / 2, z: pos.z },
+                tileScale,
+                material,
+                rotation,
+            );
+
+            if (door && cell.floor === door.floor && x === door.x && y === door.y) {
                     const doorOffset = {
                         x: door.dx === 1 ? tileSize / 2 : door.dx === -1 ? -tileSize / 2 : 0,
                         z: door.dy === 1 ? tileSize / 2 : door.dy === -1 ? -tileSize / 2 : 0,
@@ -470,28 +668,37 @@ function buildDungeon(appInstance, grid, material, door, doorMaterial, recessMat
                         },
                         archMaterial || material,
                     );
-                    continue;
-                }
+                continue;
+            }
 
-                [
+            [
                     { dx: 0, dy: -1, px: 0, pz: -tileSize / 2, sx: tileSize, sz: wallThickness },
                     { dx: 0, dy: 1, px: 0, pz: tileSize / 2, sx: tileSize, sz: wallThickness },
                     { dx: -1, dy: 0, px: -tileSize / 2, pz: 0, sx: wallThickness, sz: tileSize },
                     { dx: 1, dy: 0, px: tileSize / 2, pz: 0, sx: wallThickness, sz: tileSize },
-                ].forEach((edge) => {
-                    if (grid[floor][y + edge.dy]?.[x + edge.dx] !== 1 && grid[floor][y + edge.dy]?.[x + edge.dx] !== 2) {
+            ].forEach((edge) => {
+                    const neighbor = grid[y + edge.dy]?.[x + edge.dx];
+                    const connectsToNeighbor = neighbor?.walkable && (
+                        neighbor.floor === cell.floor ||
+                        cell.type === 'vertical-corridor' ||
+                        neighbor.type === 'vertical-corridor'
+                    );
+                    if (!connectsToNeighbor) {
                         addBox(
                             appInstance,
                             'wall',
                             { x: pos.x + edge.px, y: elevation + wallHeight / 2, z: pos.z + edge.pz },
                             { x: edge.sx, y: wallHeight, z: edge.sz },
                             material,
+                            null,
                         );
 
-                        const isFarEnough = torchTiles[floor].every(
+                        const floorTorchTiles = torchTiles.get(cell.floor) || [];
+                        const isFarEnough = floorTorchTiles.every(
                             (tile) => Math.abs(tile.x - x) + Math.abs(tile.y - y) >= 3,
                         );
-                        if (torchCounts[floor] < 18 && isFarEnough && Math.random() < 0.1) {
+                        const floorTorchCount = torchCounts.get(cell.floor) || 0;
+                        if (cell.type !== 'vertical-corridor' && floorTorchCount < 18 && isFarEnough && Math.random() < 0.1) {
                             addTorch(
                                 appInstance,
                                 {
@@ -502,12 +709,12 @@ function buildDungeon(appInstance, grid, material, door, doorMaterial, recessMat
                                 edge,
                                 torchMaterials,
                             );
-                            torchTiles[floor].push({ x, y });
-                            torchCounts[floor] += 1;
+                            floorTorchTiles.push({ x, y });
+                            torchTiles.set(cell.floor, floorTorchTiles);
+                            torchCounts.set(cell.floor, floorTorchCount + 1);
                         }
                     }
                 });
-            }
         }
     }
 
@@ -517,19 +724,18 @@ function buildDungeon(appInstance, grid, material, door, doorMaterial, recessMat
 function findRandomFloorTile(collisionGrid, exclude = []) {
     const candidates = [];
 
-    for (let floor = 0; floor < dungeonFloors; floor += 1) {
-        for (let y = 1; y < dungeonHeight - 1; y += 1) {
-            for (let x = 1; x < dungeonWidth - 1; x += 1) {
-                if (collisionGrid[floor]?.[y]?.[x] !== 1) {
-                    continue;
-                }
-
-                if (exclude.some((point) => point.floor === floor && point.x === x && point.y === y)) {
-                    continue;
-                }
-
-                candidates.push({ floor, x, y });
+    for (let y = 1; y < dungeonHeight - 1; y += 1) {
+        for (let x = 1; x < dungeonWidth - 1; x += 1) {
+            const cell = collisionGrid[y]?.[x];
+            if (!cell?.walkable || cell.type === 'vertical-corridor') {
+                continue;
             }
+
+            if (exclude.some((point) => point.floor === cell.floor && point.x === x && point.y === y)) {
+                continue;
+            }
+
+            candidates.push({ floor: cell.floor, x, y });
         }
     }
 

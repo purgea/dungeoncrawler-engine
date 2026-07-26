@@ -32,7 +32,13 @@ function setRotation(nextYaw, nextPitch) {
     camera?.setEulerAngles(pitch, yaw, 0);
 }
 
-function isWalkableWorldPosition(x, z, collisionGrid, dungeonWidth, dungeonHeight, tileSize, floor = 0) {
+function tileAtWorldPosition(x, z, collisionGrid, dungeonWidth, dungeonHeight, tileSize) {
+    const tileX = Math.floor(x / tileSize + dungeonWidth / 2 + 0.5);
+    const tileY = Math.floor(z / tileSize + dungeonHeight / 2 + 0.5);
+    return { x: tileX, y: tileY, cell: collisionGrid[tileY]?.[tileX] };
+}
+
+function isWalkableWorldPosition(x, z, collisionGrid, dungeonWidth, dungeonHeight, tileSize, fromTile) {
     const samples = [
         { x, z },
         { x: x - props.playerRadius, z: z - props.playerRadius },
@@ -42,35 +48,85 @@ function isWalkableWorldPosition(x, z, collisionGrid, dungeonWidth, dungeonHeigh
     ];
 
     return samples.every((sample) => {
-        const tile = {
-            x: Math.floor(sample.x / tileSize + dungeonWidth / 2 + 0.5),
-            y: Math.floor(sample.z / tileSize + dungeonHeight / 2 + 0.5),
-        };
+        const tile = tileAtWorldPosition(sample.x, sample.z, collisionGrid, dungeonWidth, dungeonHeight, tileSize);
+        const { cell } = tile;
+        if (!cell?.walkable) {
+            return false;
+        }
 
-        return collisionGrid[floor]?.[tile.y]?.[tile.x] === 1 || collisionGrid[floor]?.[tile.y]?.[tile.x] === 2;
+        if (!fromTile?.cell) {
+            return true;
+        }
+
+        const corridorCell = fromTile.cell.type === 'vertical-corridor'
+            ? fromTile.cell
+            : cell.type === 'vertical-corridor'
+                ? cell
+                : null;
+
+        if (corridorCell) {
+            const deltaX = tile.x - fromTile.x;
+            const deltaY = tile.y - fromTile.y;
+            const lateralDelta = deltaX * corridorCell.direction.y - deltaY * corridorCell.direction.x;
+            if (lateralDelta !== 0) {
+                return false;
+            }
+        }
+
+        return cell.floor === fromTile.cell.floor ||
+            cell.type === 'vertical-corridor' ||
+            fromTile.cell.type === 'vertical-corridor';
     });
 }
 
-function moveWithCollision(deltaX, deltaZ, collisionGrid, dungeonWidth, dungeonHeight, tileSize, floor = 0) {
+function surfaceElevation(x, z, collisionGrid, dungeonWidth, dungeonHeight, tileSize) {
+    const tile = tileAtWorldPosition(x, z, collisionGrid, dungeonWidth, dungeonHeight, tileSize);
+    const cell = tile.cell;
+    if (!cell?.walkable) {
+        return null;
+    }
+
+    if (cell.type !== 'vertical-corridor') {
+        return cell.elevation;
+    }
+
+    const centerX = (tile.x - dungeonWidth / 2) * tileSize;
+    const centerZ = (tile.y - dungeonHeight / 2) * tileSize;
+    const alongSlope = (x - centerX) * cell.direction.x + (z - centerZ) * cell.direction.y;
+    return cell.elevation + Math.tan(cell.slope * pc.math.DEG_TO_RAD) * alongSlope;
+}
+
+function moveWithCollision(deltaX, deltaZ, collisionGrid, dungeonWidth, dungeonHeight, tileSize) {
     if (!camera) {
-        return;
+        return null;
     }
 
     const position = camera.getLocalPosition();
+    const current = tileAtWorldPosition(position.x, position.z, collisionGrid, dungeonWidth, dungeonHeight, tileSize);
     let nextX = position.x + deltaX;
     let nextZ = position.z;
 
-    if (!isWalkableWorldPosition(nextX, nextZ, collisionGrid, dungeonWidth, dungeonHeight, tileSize, floor)) {
+    if (!isWalkableWorldPosition(nextX, nextZ, collisionGrid, dungeonWidth, dungeonHeight, tileSize, current)) {
         nextX = position.x;
     }
 
     nextZ = position.z + deltaZ;
 
-    if (!isWalkableWorldPosition(nextX, nextZ, collisionGrid, dungeonWidth, dungeonHeight, tileSize, floor)) {
+    const afterX = tileAtWorldPosition(nextX, nextZ, collisionGrid, dungeonWidth, dungeonHeight, tileSize);
+    if (!isWalkableWorldPosition(nextX, nextZ, collisionGrid, dungeonWidth, dungeonHeight, tileSize, afterX.cell ? afterX : current)) {
         nextZ = position.z;
     }
 
-    camera.setLocalPosition(nextX, 1.55, nextZ);
+    const elevation = surfaceElevation(nextX, nextZ, collisionGrid, dungeonWidth, dungeonHeight, tileSize);
+    const destination = tileAtWorldPosition(nextX, nextZ, collisionGrid, dungeonWidth, dungeonHeight, tileSize);
+    camera.setLocalPosition(nextX, (elevation ?? current.cell?.elevation ?? 0) + 1.55, nextZ);
+
+    return {
+        x: destination.x,
+        y: destination.y,
+        floor: destination.cell?.floor ?? 0,
+        elevation: elevation ?? 0,
+    };
 }
 
 function getCamera() {

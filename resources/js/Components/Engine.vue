@@ -27,11 +27,9 @@ const keys = new Set();
 
 function tileFromWorldPosition(position) {
     const dungeon = dungeonComponent.value;
-    return {
-        x: Math.floor(position.x / dungeon.tileSize + dungeon.dungeonWidth / 2 + 0.5),
-        y: Math.floor(position.z / dungeon.tileSize + dungeon.dungeonHeight / 2 + 0.5),
-        floor: currentFloor,
-    };
+    const x = Math.floor(position.x / dungeon.tileSize + dungeon.dungeonWidth / 2 + 0.5);
+    const y = Math.floor(position.z / dungeon.tileSize + dungeon.dungeonHeight / 2 + 0.5);
+    return { x, y, floor: collisionGrid[y]?.[x]?.floor ?? currentFloor };
 }
 
 function revealAroundPlayer(force = false) {
@@ -51,7 +49,8 @@ function revealAroundPlayer(force = false) {
     const revealRadius = 2;
     for (let y = tile.y - revealRadius; y <= tile.y + revealRadius; y += 1) {
         for (let x = tile.x - revealRadius; x <= tile.x + revealRadius; x += 1) {
-            if (Math.hypot(x - tile.x, y - tile.y) > revealRadius + 0.25 || !collisionGrid[tile.floor]?.[y]?.[x]) {
+            const cell = collisionGrid[y]?.[x];
+            if (Math.hypot(x - tile.x, y - tile.y) > revealRadius + 0.25 || !cell?.walkable || cell.floor !== tile.floor) {
                 continue;
             }
 
@@ -233,15 +232,15 @@ function updateMovement(dt) {
         const deltaX = (normalizedX * cosYaw - normalizedZ * sinYaw) * speed;
         const deltaZ = (-normalizedX * sinYaw - normalizedZ * cosYaw) * speed;
 
-        camera.moveWithCollision(
+        const movement = camera.moveWithCollision(
             deltaX,
             deltaZ,
             collisionGrid,
             dungeonComponent.value.dungeonWidth,
             dungeonComponent.value.dungeonHeight,
             dungeonComponent.value.tileSize,
-            currentFloor,
         );
+        currentFloor = movement?.floor ?? currentFloor;
         revealAroundPlayer();
     }
 
@@ -250,7 +249,7 @@ function updateMovement(dt) {
         shinyObject.setLocalEulerAngles(t * 32, t * 58, t * 18);
         shinyObject.setLocalPosition(
             shinyObjectPosition.x,
-            1.05 + Math.sin(t * 3.2) * 0.14,
+            shinyObjectPosition.y + Math.sin(t * 3.2) * 0.14,
             shinyObjectPosition.z,
         );
     }
@@ -291,14 +290,17 @@ function start() {
     minimapGrid.value = grid;
     dungeon.buildDungeon(app.value, grid, material, door, doorMaterial, recessMaterial, archMaterial);
     currentFloor = spawn.floor ?? 0;
-    cameraComponent.value.setupCamera(app.value, { ...dungeon.worldPosition(spawn.x, spawn.y, currentFloor), y: 1.55 });
+    cameraComponent.value.setupCamera(app.value, { ...dungeon.worldPosition(spawn.x, spawn.y, currentFloor), y: currentFloor + 1.55 });
     revealAroundPlayer(true);
-    startDoorPosition = { ...dungeon.worldPosition(door.x, door.y, door.floor ?? currentFloor), y: dungeon.wallHeight / 2 };
+    startDoorPosition = { ...dungeon.worldPosition(door.x, door.y, door.floor ?? currentFloor), y: (door.floor ?? currentFloor) + dungeon.wallHeight / 2 };
 
     const shinyTile = dungeon.findRandomFloorTile(collisionGrid, [
         { floor: startRoom.floor ?? 0, x: startRoom.x + Math.floor(startRoom.w / 2), y: startRoom.y + Math.floor(startRoom.h / 2) },
     ]);
-    const shinyPosition = { ...dungeon.worldPosition(shinyTile.x, shinyTile.y, shinyTile.floor ?? 0), y: 1.05 };
+    const shinyPosition = {
+        ...dungeon.worldPosition(shinyTile.x, shinyTile.y, shinyTile.floor ?? 0),
+        y: (shinyTile.floor ?? 0) + 1.05,
+    };
     shinyPosition.x += Math.random() * 1.2 - 0.6;
     shinyPosition.z += Math.random() * 1.2 - 0.6;
     shinyObjectPosition = shinyPosition;
@@ -311,7 +313,7 @@ function start() {
     shinyMaterial.shininess = 96;
     shinyMaterial.update();
     shinyObject.addComponent('render', { type: 'sphere', material: shinyMaterial });
-    shinyObject.setLocalPosition(shinyPosition.x, 1.05, shinyPosition.z);
+    shinyObject.setLocalPosition(shinyPosition.x, shinyPosition.y, shinyPosition.z);
     shinyObject.setLocalScale(0.8, 0.8, 0.8);
     app.value.root.addChild(shinyObject);
 
