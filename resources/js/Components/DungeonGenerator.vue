@@ -438,16 +438,16 @@ function buildDungeon(appInstance, grid, material, door, doorMaterial, recessMat
             y: (startElevation + endElevation) / 2,
             z: (start.z + end.z) / 2,
         };
-        const slopedLength = Math.hypot(horizontalLength, endElevation - startElevation) + 0.12;
+        const slopedLength = Math.hypot(horizontalLength, endElevation - startElevation);
         const rotation = {
             x: direction.y ? -first.cell.slope * direction.y : 0,
             y: 0,
             z: direction.x ? first.cell.slope * direction.x : 0,
         };
         const corridorScale = {
-            x: direction.x ? slopedLength : tileSize + 0.08,
+            x: direction.x ? slopedLength : tileSize,
             y: floorThickness,
-            z: direction.y ? slopedLength : tileSize + 0.08,
+            z: direction.y ? slopedLength : tileSize,
         };
 
         addBox(
@@ -485,67 +485,9 @@ function buildDungeon(appInstance, grid, material, door, doorMaterial, recessMat
                         z: section.z + offset.z,
                     },
                     {
-                        x: direction.x ? tileSize + 0.16 : wallThickness * 1.8,
+                        x: direction.x ? tileSize : wallThickness * 1.8,
                         y: sectionHeight,
-                        z: direction.y ? tileSize + 0.16 : wallThickness * 1.8,
-                    },
-                    material,
-                );
-            });
-        });
-
-        const landingOverlap = 1.1;
-        const landings = [
-            {
-                x: start.x - direction.x * tileSize / 2,
-                y: startElevation,
-                z: start.z - direction.y * tileSize / 2,
-            },
-            {
-                x: end.x + direction.x * tileSize / 2,
-                y: endElevation,
-                z: end.z + direction.y * tileSize / 2,
-            },
-        ];
-
-        landings.forEach((landing) => {
-            const thresholdScale = {
-                x: direction.x ? landingOverlap : tileSize + 0.18,
-                y: floorThickness + 0.04,
-                z: direction.y ? landingOverlap : tileSize + 0.18,
-            };
-
-            addBox(
-                appInstance,
-                'vertical-corridor-floor-filler',
-                { x: landing.x, y: landing.y - thresholdScale.y / 2, z: landing.z },
-                thresholdScale,
-                material,
-            );
-            addBox(
-                appInstance,
-                'vertical-corridor-ceiling-filler',
-                { x: landing.x, y: landing.y + wallHeight + thresholdScale.y / 2, z: landing.z },
-                thresholdScale,
-                material,
-            );
-
-            [
-                { x: -direction.y * tileSize / 2, z: direction.x * tileSize / 2 },
-                { x: direction.y * tileSize / 2, z: -direction.x * tileSize / 2 },
-            ].forEach((offset) => {
-                addBox(
-                    appInstance,
-                    'vertical-corridor-wall-filler',
-                    {
-                        x: landing.x + offset.x,
-                        y: landing.y + wallHeight / 2,
-                        z: landing.z + offset.z,
-                    },
-                    {
-                        x: direction.x ? landingOverlap : wallThickness * 1.8,
-                        y: wallHeight + 0.12,
-                        z: direction.y ? landingOverlap : wallThickness * 1.8,
+                        z: direction.y ? tileSize : wallThickness * 1.8,
                     },
                     material,
                 );
