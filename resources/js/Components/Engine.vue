@@ -3,12 +3,17 @@ import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import * as pc from 'playcanvas';
 import Camera from './Camera.vue';
 import DungeonGenerator from './DungeonGenerator.vue';
+import Minimap from './Minimap.vue';
 
 const emit = defineEmits(['pickup-item', 'use-door', 'lock-change']);
 const viewport = ref(null);
 const app = ref(null);
 const cameraComponent = ref(null);
 const dungeonComponent = ref(null);
+const minimapGrid = ref([]);
+const minimapPlayer = ref(null);
+const minimapRevision = ref(0);
+const exploredTiles = new Set();
 
 let collisionGrid = [];
 let currentFloor = 0;
@@ -19,6 +24,49 @@ let resizeObserver = null;
 let removeListeners = () => {};
 let isLocked = false;
 const keys = new Set();
+
+function tileFromWorldPosition(position) {
+    const dungeon = dungeonComponent.value;
+    return {
+        x: Math.floor(position.x / dungeon.tileSize + dungeon.dungeonWidth / 2 + 0.5),
+        y: Math.floor(position.z / dungeon.tileSize + dungeon.dungeonHeight / 2 + 0.5),
+        floor: currentFloor,
+    };
+}
+
+function revealAroundPlayer(force = false) {
+    const camera = cameraComponent.value?.getCamera?.();
+    if (!camera || !collisionGrid.length) {
+        return;
+    }
+
+    const tile = tileFromWorldPosition(camera.getLocalPosition());
+    const previous = minimapPlayer.value;
+    if (!force && previous?.x === tile.x && previous?.y === tile.y && previous?.floor === tile.floor) {
+        return;
+    }
+
+    minimapPlayer.value = tile;
+    let changed = false;
+    const revealRadius = 2;
+    for (let y = tile.y - revealRadius; y <= tile.y + revealRadius; y += 1) {
+        for (let x = tile.x - revealRadius; x <= tile.x + revealRadius; x += 1) {
+            if (Math.hypot(x - tile.x, y - tile.y) > revealRadius + 0.25 || !collisionGrid[tile.floor]?.[y]?.[x]) {
+                continue;
+            }
+
+            const key = `${tile.floor}:${x}:${y}`;
+            if (!exploredTiles.has(key)) {
+                exploredTiles.add(key);
+                changed = true;
+            }
+        }
+    }
+
+    if (changed || force) {
+        minimapRevision.value += 1;
+    }
+}
 
 function setLocked(nextLocked) {
     isLocked = nextLocked;
@@ -194,6 +242,7 @@ function updateMovement(dt) {
             dungeonComponent.value.tileSize,
             currentFloor,
         );
+        revealAroundPlayer();
     }
 
     if (shinyObject) {
@@ -239,9 +288,11 @@ function start() {
     const archMaterial = dungeon.createArchMaterial(texture);
 
     collisionGrid = grid;
+    minimapGrid.value = grid;
     dungeon.buildDungeon(app.value, grid, material, door, doorMaterial, recessMaterial, archMaterial);
     currentFloor = spawn.floor ?? 0;
     cameraComponent.value.setupCamera(app.value, { ...dungeon.worldPosition(spawn.x, spawn.y, currentFloor), y: 1.55 });
+    revealAroundPlayer(true);
     startDoorPosition = { ...dungeon.worldPosition(door.x, door.y, door.floor ?? currentFloor), y: dungeon.wallHeight / 2 };
 
     const shinyTile = dungeon.findRandomFloorTile(collisionGrid, [
@@ -295,5 +346,11 @@ defineExpose({
         <div ref="viewport" class="absolute inset-0 h-full w-full" />
         <Camera ref="cameraComponent" :player-radius="0.62" />
         <DungeonGenerator ref="dungeonComponent" />
+        <Minimap
+            :grid="minimapGrid"
+            :explored="exploredTiles"
+            :player="minimapPlayer"
+            :revision="minimapRevision"
+        />
     </div>
 </template>
