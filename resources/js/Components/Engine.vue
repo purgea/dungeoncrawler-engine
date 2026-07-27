@@ -2,6 +2,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import * as pc from 'playcanvas';
 import DungeonGenerator from './DungeonGenerator.vue';
+import Loader from './Loader.vue';
 import Minimap from './Minimap.vue';
 import Player from './Player.vue';
 
@@ -10,6 +11,7 @@ const viewport = ref(null);
 const app = ref(null);
 const playerComponent = ref(null);
 const dungeonComponent = ref(null);
+const loaderComponent = ref(null);
 const minimapGrid = ref([]);
 const minimapPlayer = ref(null);
 const minimapRevision = ref(0);
@@ -21,6 +23,10 @@ let shinyObject = null;
 let shinyObjectPosition = null;
 let startDoorPosition = null;
 let resizeObserver = null;
+
+function nextFrame() {
+    return new Promise((resolve) => requestAnimationFrame(resolve));
+}
 
 function tileFromWorldPosition(position) {
     const dungeon = dungeonComponent.value;
@@ -153,7 +159,8 @@ function updateWorld() {
     }
 }
 
-function start() {
+async function start() {
+    loaderComponent.value.setMessage('Preparing renderer...');
     const canvas = document.createElement('canvas');
     canvas.className = 'dungeon-canvas';
     canvas.style.display = 'block';
@@ -175,6 +182,9 @@ function start() {
     // Keep the dungeon readable, but let local light sources define the scene.
     app.value.scene.ambientLight = new pc.Color(0.15, 0.135, 0.115);
 
+    loaderComponent.value.setMessage('Generating dungeon layout...');
+    await nextFrame();
+
     const dungeon = dungeonComponent.value;
     const { grid, startRoom, door, spawn } = dungeon.generateDungeon();
     const texture = dungeon.createDungeonTexture(app.value);
@@ -186,7 +196,13 @@ function start() {
 
     collisionGrid = grid;
     minimapGrid.value = grid;
+
+    loaderComponent.value.setMessage('Building rooms and corridors...');
+    await nextFrame();
     dungeon.buildDungeon(app.value, grid, material, door, doorMaterial, recessMaterial, archMaterial);
+
+    loaderComponent.value.setMessage('Placing player and relic...');
+    await nextFrame();
     currentFloor = spawn.floor ?? 0;
     playerComponent.value.setupPlayer(
         app.value,
@@ -226,6 +242,10 @@ function start() {
     app.value.root.addChild(shinyObject);
 
     app.value.on('update', updateWorld);
+
+    loaderComponent.value.setMessage('Dungeon ready');
+    await nextFrame();
+    loaderComponent.value.hide();
 }
 
 function cleanup() {
@@ -242,7 +262,14 @@ function cleanup() {
 
 onMounted(async () => {
     await nextTick();
-    start();
+    await nextFrame();
+
+    try {
+        await start();
+    } catch (error) {
+        loaderComponent.value?.fail(error);
+        console.error('Unable to initialize dungeon.', error);
+    }
 });
 onBeforeUnmount(cleanup);
 
@@ -268,5 +295,6 @@ defineExpose({
             :player="minimapPlayer"
             :revision="minimapRevision"
         />
+        <Loader ref="loaderComponent" />
     </div>
 </template>
