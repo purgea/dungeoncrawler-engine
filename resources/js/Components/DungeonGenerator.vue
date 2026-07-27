@@ -11,6 +11,17 @@ function randomInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+function shuffled(values) {
+    const result = [...values];
+
+    for (let index = result.length - 1; index > 0; index -= 1) {
+        const swapIndex = randomInt(0, index);
+        [result[index], result[swapIndex]] = [result[swapIndex], result[index]];
+    }
+
+    return result;
+}
+
 function intersects(a, b) {
     if (a.floor !== b.floor) {
         return false;
@@ -96,16 +107,17 @@ function generateDungeon() {
     const grid = Array.from({ length: dungeonHeight }, () => Array(dungeonWidth).fill(null));
     const upperConnectorY = randomInt(8, 25);
     const lowerConnectorY = randomInt(35, 53);
+    const regionFloors = shuffled(floorElevations);
     const floorRegions = [
-        { floor: 0, minX: 2, maxX: 20 },
-        { floor: 10, minX: 24, maxX: 40 },
-        { floor: -10, minX: 44, maxX: dungeonWidth - 3 },
+        { floor: regionFloors[0], minX: 2, maxX: 20 },
+        { floor: regionFloors[1], minX: 24, maxX: 40 },
+        { floor: regionFloors[2], minX: 44, maxX: dungeonWidth - 3 },
     ];
     const rooms = [
-        { floor: 0, x: 16, y: upperConnectorY - 3, w: 5, h: 7, gateway: true },
-        { floor: 10, x: 24, y: upperConnectorY - 3, w: 5, h: 7, gateway: true },
-        { floor: 10, x: 36, y: lowerConnectorY - 3, w: 5, h: 7, gateway: true },
-        { floor: -10, x: 44, y: lowerConnectorY - 3, w: 5, h: 7, gateway: true },
+        { floor: regionFloors[0], x: 16, y: upperConnectorY - 3, w: 5, h: 7, gateway: true },
+        { floor: regionFloors[1], x: 24, y: upperConnectorY - 3, w: 5, h: 7, gateway: true },
+        { floor: regionFloors[1], x: 36, y: lowerConnectorY - 3, w: 5, h: 7, gateway: true },
+        { floor: regionFloors[2], x: 44, y: lowerConnectorY - 3, w: 5, h: 7, gateway: true },
     ];
     rooms.forEach((room) => carveRoom(grid, room));
 
@@ -143,13 +155,13 @@ function generateDungeon() {
 
     carveVerticalCorridor(
         grid,
-        { x: 20, y: upperConnectorY, floor: 0 },
-        { x: 24, y: upperConnectorY, floor: 10 },
+        { x: 20, y: upperConnectorY, floor: regionFloors[0] },
+        { x: 24, y: upperConnectorY, floor: regionFloors[1] },
     );
     carveVerticalCorridor(
         grid,
-        { x: 40, y: lowerConnectorY, floor: 10 },
-        { x: 44, y: lowerConnectorY, floor: -10 },
+        { x: 40, y: lowerConnectorY, floor: regionFloors[1] },
+        { x: 44, y: lowerConnectorY, floor: regionFloors[2] },
     );
 
     const startRooms = rooms.filter((room) => room.floor === 0 && !room.gateway);
