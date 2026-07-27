@@ -8,6 +8,10 @@ defineProps({
         type: Object,
         required: true,
     },
+    musicAssets: {
+        type: Array,
+        required: true,
+    },
 });
 
 const hasShinyItem = ref(false);
@@ -42,7 +46,7 @@ function onUseDoor() {
             @pickup-item="onPickupItem"
             @use-door="onUseDoor"
         />
-        <Music ref="musicComponent" />
+        <Music ref="musicComponent" :music-assets="musicAssets" />
         <div class="absolute left-4 top-4 flex w-[min(92vw,340px)] flex-col gap-3 border border-white/15 bg-black/60 px-3 py-3 shadow-[0_12px_40px_rgba(0,0,0,0.25)] backdrop-blur-md">
             <div class="flex items-start justify-between gap-3">
                 <div>
