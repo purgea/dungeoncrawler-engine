@@ -1,5 +1,8 @@
 <script setup>
+import { onBeforeUnmount } from 'vue';
 import * as pc from 'playcanvas';
+
+const emit = defineEmits(['lock-change', 'move', 'pointer-down']);
 
 const props = defineProps({
     playerRadius: {
@@ -9,10 +12,22 @@ const props = defineProps({
 });
 
 let camera = null;
+let app = null;
 let yaw = 0;
 let pitch = 0;
+let collisionGrid = [];
+let dungeonWidth = 0;
+let dungeonHeight = 0;
+let tileSize = 0;
+let removeListeners = () => {};
+const keys = new Set();
 
-function setupCamera(appInstance, spawnPoint) {
+function setupPlayer(appInstance, canvas, spawnPoint, dungeon) {
+    app = appInstance;
+    collisionGrid = dungeon.grid;
+    dungeonWidth = dungeon.width;
+    dungeonHeight = dungeon.height;
+    tileSize = dungeon.tileSize;
     camera = new pc.Entity('player-camera');
     camera.addComponent('camera', {
         clearColor: new pc.Color(0.02, 0.025, 0.02),
@@ -22,6 +37,8 @@ function setupCamera(appInstance, spawnPoint) {
     });
     camera.setLocalPosition(spawnPoint.x, spawnPoint.y, spawnPoint.z);
     appInstance.root.addChild(camera);
+    installInput(canvas);
+    appInstance.on('update', updateMovement);
 
     return { camera, start: spawnPoint };
 }
@@ -203,6 +220,94 @@ function moveWithCollision(deltaX, deltaZ, collisionGrid, dungeonWidth, dungeonH
     };
 }
 
+function installInput(canvas) {
+    const lockMouse = () => {
+        if (document.pointerLockElement || pc.Mouse.isPointerLocked()) {
+            emit('lock-change', true);
+            return;
+        }
+
+        app?.mouse?.enablePointerLock(
+            () => emit('lock-change', true),
+            () => emit('lock-change', false),
+        );
+    };
+    const onKeyDown = (event) => {
+        if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft'].includes(event.code)) {
+            event.preventDefault();
+        }
+        keys.add(event.code);
+    };
+    const onKeyUp = (event) => keys.delete(event.code);
+    const onPointerLockChange = () => {
+        emit('lock-change', Boolean(document.pointerLockElement || pc.Mouse.isPointerLocked()));
+    };
+    const onPointerLockError = () => emit('lock-change', false);
+    const onMouseMove = (event) => {
+        if (!document.pointerLockElement && !pc.Mouse.isPointerLocked()) {
+            return;
+        }
+
+        setRotation(
+            yaw - event.dx * 0.12,
+            Math.max(-82, Math.min(82, pitch - event.dy * 0.12)),
+        );
+    };
+    const onPointerDown = (event) => emit('pointer-down', event);
+
+    app.mouse.disableContextMenu();
+    app.mouse.on(pc.Mouse.EVENT_MOUSEMOVE, onMouseMove);
+    app.mouse.on(pc.Mouse.EVENT_MOUSEDOWN, onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    document.body.addEventListener('click', lockMouse);
+    document.addEventListener('pointerlockchange', onPointerLockChange);
+    document.addEventListener('pointerlockerror', onPointerLockError);
+
+    removeListeners = () => {
+        app?.mouse?.off(pc.Mouse.EVENT_MOUSEMOVE, onMouseMove);
+        app?.mouse?.off(pc.Mouse.EVENT_MOUSEDOWN, onPointerDown);
+        window.removeEventListener('keydown', onKeyDown);
+        window.removeEventListener('keyup', onKeyUp);
+        document.body.removeEventListener('click', lockMouse);
+        document.removeEventListener('pointerlockchange', onPointerLockChange);
+        document.removeEventListener('pointerlockerror', onPointerLockError);
+    };
+}
+
+function updateMovement(dt) {
+    let inputX = 0;
+    let inputZ = 0;
+
+    if (keys.has('KeyW')) inputZ += 1;
+    if (keys.has('KeyS')) inputZ -= 1;
+    if (keys.has('KeyD')) inputX += 1;
+    if (keys.has('KeyA')) inputX -= 1;
+    if (inputX === 0 && inputZ === 0) {
+        return;
+    }
+
+    const length = Math.hypot(inputX, inputZ);
+    const normalizedX = inputX / length;
+    const normalizedZ = inputZ / length;
+    const yawRadians = yaw * pc.math.DEG_TO_RAD;
+    const sinYaw = Math.sin(yawRadians);
+    const cosYaw = Math.cos(yawRadians);
+    const speed = (keys.has('ShiftLeft') ? 8 : 4.6) * dt;
+    const movement = moveWithCollision(
+        (normalizedX * cosYaw - normalizedZ * sinYaw) * speed,
+        (-normalizedX * sinYaw - normalizedZ * cosYaw) * speed,
+        collisionGrid,
+        dungeonWidth,
+        dungeonHeight,
+        tileSize,
+    );
+
+    if (movement) {
+        emit('move', movement);
+    }
+}
+
 function getCamera() {
     return camera;
 }
@@ -212,14 +317,18 @@ function getRotation() {
 }
 
 function dispose() {
+    removeListeners();
+    keys.clear();
+    app?.off('update', updateMovement);
     camera?.destroy?.();
     camera = null;
+    app = null;
 }
 
+onBeforeUnmount(dispose);
+
 defineExpose({
-    setupCamera,
-    setRotation,
-    moveWithCollision,
+    setupPlayer,
     getCamera,
     getRotation,
     dispose,
