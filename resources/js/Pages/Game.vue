@@ -3,6 +3,13 @@ import { ref } from 'vue';
 import Engine from '../Components/Engine.vue';
 import Music from '../Components/Music.vue';
 
+defineProps({
+    dungeon: {
+        type: Object,
+        required: true,
+    },
+});
+
 const hasShinyItem = ref(false);
 const gameMessage = ref('Find the relic, then bring it back to the start door.');
 const engineComponent = ref(null);
@@ -31,6 +38,7 @@ function onUseDoor() {
     <main class="relative h-screen w-screen overflow-hidden bg-[#050604] text-[#ece7d8]">
         <Engine
             ref="engineComponent"
+            :dungeon="dungeon"
             @pickup-item="onPickupItem"
             @use-door="onUseDoor"
         />

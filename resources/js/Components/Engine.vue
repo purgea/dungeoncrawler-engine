@@ -1,16 +1,22 @@
 <script setup>
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, ref, toRaw } from 'vue';
 import * as pc from 'playcanvas';
-import DungeonGenerator from './DungeonGenerator.vue';
+import DungeonRenderer from './DungeonRenderer.vue';
 import Loader from './Loader.vue';
 import Minimap from './Minimap.vue';
 import Player from './Player.vue';
 
 const emit = defineEmits(['pickup-item', 'use-door', 'lock-change']);
+const props = defineProps({
+    dungeon: {
+        type: Object,
+        required: true,
+    },
+});
 const viewport = ref(null);
 const app = ref(null);
 const playerComponent = ref(null);
-const dungeonComponent = ref(null);
+const dungeonRenderer = ref(null);
 const loaderComponent = ref(null);
 const minimapGrid = ref([]);
 const minimapPlayer = ref(null);
@@ -29,7 +35,7 @@ function nextFrame() {
 }
 
 function tileFromWorldPosition(position) {
-    const dungeon = dungeonComponent.value;
+    const dungeon = dungeonRenderer.value;
     const x = Math.floor(position.x / dungeon.tileSize + dungeon.dungeonWidth / 2 + 0.5);
     const y = Math.floor(position.z / dungeon.tileSize + dungeon.dungeonHeight / 2 + 0.5);
     return { x, y, floor: collisionGrid[y]?.[x]?.floor ?? currentFloor };
@@ -182,11 +188,12 @@ async function start() {
     // Keep the dungeon readable, but let local light sources define the scene.
     app.value.scene.ambientLight = new pc.Color(0.15, 0.135, 0.115);
 
-    loaderComponent.value.setMessage('Generating dungeon layout...');
+    loaderComponent.value.setMessage('Reading dungeon layout...');
     await nextFrame();
 
-    const dungeon = dungeonComponent.value;
-    const { grid, startRoom, door, spawn } = dungeon.generateDungeon();
+    const dungeon = dungeonRenderer.value;
+    const layout = toRaw(props.dungeon);
+    const { grid, door, spawn, relic } = layout;
     const texture = dungeon.createDungeonTexture(app.value);
     const material = dungeon.createMaterial(texture);
     const doorTexture = dungeon.createDoorTexture(app.value);
@@ -218,9 +225,7 @@ async function start() {
     revealAroundPlayer(true);
     startDoorPosition = { ...dungeon.worldPosition(door.x, door.y, door.floor ?? currentFloor), y: (door.floor ?? currentFloor) + dungeon.wallHeight / 2 };
 
-    const shinyTile = dungeon.findRandomFloorTile(collisionGrid, [
-        { floor: startRoom.floor ?? 0, x: startRoom.x + Math.floor(startRoom.w / 2), y: startRoom.y + Math.floor(startRoom.h / 2) },
-    ]);
+    const shinyTile = relic;
     const shinyPosition = {
         ...dungeon.worldPosition(shinyTile.x, shinyTile.y, shinyTile.floor ?? 0),
         y: (shinyTile.floor ?? 0) + 1.05,
@@ -288,7 +293,7 @@ defineExpose({
             @move="onPlayerMove"
             @pointer-down="onPlayerPointerDown"
         />
-        <DungeonGenerator ref="dungeonComponent" />
+        <DungeonRenderer ref="dungeonRenderer" :layout="dungeon" />
         <Minimap
             :grid="minimapGrid"
             :explored="exploredTiles"

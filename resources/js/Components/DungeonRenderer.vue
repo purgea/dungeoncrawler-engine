@@ -1,197 +1,21 @@
 <script setup>
 import * as pc from 'playcanvas';
 
-const dungeonWidth = 63;
-const dungeonHeight = 63;
-const floorElevations = [0, 10, -10];
-const tileSize = 4;
-const wallHeight = 3.3;
+const props = defineProps({
+    layout: {
+        type: Object,
+        required: true,
+    },
+});
+
+const dungeonWidth = props.layout.width;
+const dungeonHeight = props.layout.height;
+const floorElevations = props.layout.floors;
+const tileSize = props.layout.tileSize;
+const wallHeight = props.layout.wallHeight;
 
 function randomInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-function shuffled(values) {
-    const result = [...values];
-
-    for (let index = result.length - 1; index > 0; index -= 1) {
-        const swapIndex = randomInt(0, index);
-        [result[index], result[swapIndex]] = [result[swapIndex], result[index]];
-    }
-
-    return result;
-}
-
-function intersects(a, b) {
-    if (a.floor !== b.floor) {
-        return false;
-    }
-
-    return !(
-        a.x + a.w + 1 < b.x ||
-        b.x + b.w + 1 < a.x ||
-        a.y + a.h + 1 < b.y ||
-        b.y + b.h + 1 < a.y
-    );
-}
-
-function createCell(floor, type = 'floor', elevation = floor) {
-    return {
-        walkable: true,
-        type,
-        floor,
-        elevation,
-        slope: 0,
-        direction: { x: 0, y: 0 },
-    };
-}
-
-function carveRoom(grid, room) {
-    for (let y = room.y; y < room.y + room.h; y += 1) {
-        for (let x = room.x; x < room.x + room.w; x += 1) {
-            grid[y][x] = createCell(room.floor);
-        }
-    }
-}
-
-function carveCorridor(grid, from, to) {
-    const horizontalFirst = Math.random() > 0.5;
-    const carveX = (x1, x2, y) => {
-        for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x += 1) {
-            grid[y][x] = createCell(from.floor);
-        }
-    };
-    const carveY = (y1, y2, x) => {
-        for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y += 1) {
-            grid[y][x] = createCell(from.floor);
-        }
-    };
-
-    if (horizontalFirst) {
-        carveX(from.x, to.x, from.y);
-        carveY(from.y, to.y, to.x);
-    } else {
-        carveY(from.y, to.y, from.x);
-        carveX(from.x, to.x, to.y);
-    }
-}
-
-function carveVerticalCorridor(grid, from, to) {
-    const distance = Math.abs(to.x - from.x) + Math.abs(to.y - from.y);
-    const elevationDelta = to.floor - from.floor;
-    const corridorTileCount = distance + 1;
-    const slope = Math.atan2(elevationDelta, corridorTileCount * tileSize) / pc.math.DEG_TO_RAD;
-    const stepX = Math.sign(to.x - from.x);
-    const stepY = Math.sign(to.y - from.y);
-
-    if (Math.abs(slope) > 60) {
-        throw new Error(`Vertical corridor slope ${Math.abs(slope).toFixed(1)} exceeds 60 degrees.`);
-    }
-
-    for (let step = 0; step <= distance; step += 1) {
-        const progress = (step + 0.5) / corridorTileCount;
-        const x = from.x + stepX * Math.min(step, Math.abs(to.x - from.x));
-        const y = from.y + stepY * Math.max(0, step - Math.abs(to.x - from.x));
-        const cell = createCell(
-            progress < 0.5 ? from.floor : to.floor,
-            'vertical-corridor',
-            from.floor + elevationDelta * progress,
-        );
-        cell.slope = slope;
-        cell.direction = { x: stepX, y: stepY };
-        grid[y][x] = cell;
-    }
-}
-
-function generateDungeon() {
-    const grid = Array.from({ length: dungeonHeight }, () => Array(dungeonWidth).fill(null));
-    const upperConnectorY = randomInt(8, 25);
-    const lowerConnectorY = randomInt(35, 53);
-    const regionFloors = shuffled(floorElevations);
-    const floorRegions = [
-        { floor: regionFloors[0], minX: 2, maxX: 20 },
-        { floor: regionFloors[1], minX: 24, maxX: 40 },
-        { floor: regionFloors[2], minX: 44, maxX: dungeonWidth - 3 },
-    ];
-    const rooms = [
-        { floor: regionFloors[0], x: 16, y: upperConnectorY - 3, w: 5, h: 7, gateway: true },
-        { floor: regionFloors[1], x: 24, y: upperConnectorY - 3, w: 5, h: 7, gateway: true },
-        { floor: regionFloors[1], x: 36, y: lowerConnectorY - 3, w: 5, h: 7, gateway: true },
-        { floor: regionFloors[2], x: 44, y: lowerConnectorY - 3, w: 5, h: 7, gateway: true },
-    ];
-    rooms.forEach((room) => carveRoom(grid, room));
-
-    floorRegions.forEach((region) => {
-        for (let attempt = 0; attempt < 180 && rooms.filter((room) => room.floor === region.floor).length < 8; attempt += 1) {
-            const room = {
-                floor: region.floor,
-                w: randomInt(4, Math.min(8, region.maxX - region.minX - 1)),
-                h: randomInt(4, 9),
-                x: randomInt(region.minX, region.maxX - 7),
-                y: randomInt(2, dungeonHeight - 11),
-            };
-
-            if (rooms.some((existing) => intersects(room, existing))) {
-                continue;
-            }
-
-            carveRoom(grid, room);
-            rooms.push(room);
-        }
-    });
-
-    floorElevations.forEach((floor) => {
-        const centers = rooms
-            .filter((room) => room.floor === floor)
-            .map((room) => ({
-                floor,
-                x: Math.floor(room.x + room.w / 2),
-                y: Math.floor(room.y + room.h / 2),
-            }));
-        centers.forEach((center, index) => {
-            if (index > 0) carveCorridor(grid, centers[index - 1], center);
-        });
-    });
-
-    carveVerticalCorridor(
-        grid,
-        { x: 20, y: upperConnectorY, floor: regionFloors[0] },
-        { x: 24, y: upperConnectorY, floor: regionFloors[1] },
-    );
-    carveVerticalCorridor(
-        grid,
-        { x: 40, y: lowerConnectorY, floor: regionFloors[1] },
-        { x: 44, y: lowerConnectorY, floor: regionFloors[2] },
-    );
-
-    const startRooms = rooms.filter((room) => room.floor === 0 && !room.gateway);
-    const startRoom = startRooms[randomInt(0, startRooms.length - 1)] ||
-        rooms.find((room) => room.floor === 0) ||
-        rooms[0];
-    const spawn = {
-        x: Math.floor(startRoom.x + startRoom.w / 2),
-        y: Math.floor(startRoom.y + startRoom.h / 2),
-        floor: startRoom.floor,
-    };
-    const candidates = [];
-
-    for (let x = startRoom.x; x < startRoom.x + startRoom.w; x += 1) {
-        candidates.push({ x, y: startRoom.y, dx: 0, dy: -1 });
-        candidates.push({ x, y: startRoom.y + startRoom.h - 1, dx: 0, dy: 1 });
-    }
-
-    for (let y = startRoom.y + 1; y < startRoom.y + startRoom.h - 1; y += 1) {
-        candidates.push({ x: startRoom.x, y, dx: -1, dy: 0 });
-        candidates.push({ x: startRoom.x + startRoom.w - 1, y, dx: 1, dy: 0 });
-    }
-
-    const door = candidates.reduce((best, candidate) => {
-        const bestDistance = Math.hypot(best.x - spawn.x, best.y - spawn.y);
-        const candidateDistance = Math.hypot(candidate.x - spawn.x, candidate.y - spawn.y);
-        return candidateDistance < bestDistance ? candidate : best;
-    }, candidates[0]);
-
-    return { grid, startRoom, door: { ...door, floor: startRoom.floor }, spawn };
 }
 
 function worldPosition(x, y, floor = 0) {
@@ -675,33 +499,11 @@ function buildDungeon(appInstance, grid, material, door, doorMaterial, recessMat
     return;
 }
 
-function findRandomFloorTile(collisionGrid, exclude = []) {
-    const candidates = [];
-
-    for (let y = 1; y < dungeonHeight - 1; y += 1) {
-        for (let x = 1; x < dungeonWidth - 1; x += 1) {
-            const cell = collisionGrid[y]?.[x];
-            if (!cell?.walkable || cell.type === 'vertical-corridor') {
-                continue;
-            }
-
-            if (exclude.some((point) => point.floor === cell.floor && point.x === x && point.y === y)) {
-                continue;
-            }
-
-            candidates.push({ floor: cell.floor, x, y });
-        }
-    }
-
-    return candidates[randomInt(0, candidates.length - 1)];
-}
-
 defineExpose({
     dungeonWidth,
     dungeonHeight,
     tileSize,
     wallHeight,
-    generateDungeon,
     createDungeonTexture,
     createDoorTexture,
     createMaterial,
@@ -709,7 +511,6 @@ defineExpose({
     createRecessMaterial,
     createArchMaterial,
     buildDungeon,
-    findRandomFloorTile,
     worldPosition,
 });
 </script>

@@ -2,18 +2,31 @@
 
 namespace Tests\Feature;
 
-// use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class ExampleTest extends TestCase
 {
-    /**
-     * A basic test example.
-     */
-    public function test_the_application_returns_a_successful_response(): void
+    public function test_the_root_route_renders_the_loading_page(): void
     {
-        $response = $this->get('/');
+        $this->get('/')
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page->component('Loading'));
+    }
 
-        $response->assertStatus(200);
+    public function test_the_game_route_generates_and_passes_a_dungeon_layout(): void
+    {
+        $this->get('/game')
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Game')
+                ->has('dungeon')
+                ->where('dungeon.schemaVersion', 1)
+                ->where('dungeon.width', 63)
+                ->where('dungeon.height', 63)
+                ->has('dungeon.grid', 63)
+                ->has('dungeon.spawn')
+                ->has('dungeon.door')
+                ->has('dungeon.relic'));
     }
 }

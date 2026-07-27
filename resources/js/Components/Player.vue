@@ -19,6 +19,7 @@ let collisionGrid = [];
 let dungeonWidth = 0;
 let dungeonHeight = 0;
 let tileSize = 0;
+let rampCells = [];
 let removeListeners = () => {};
 const keys = new Set();
 
@@ -28,6 +29,14 @@ function setupPlayer(appInstance, canvas, spawnPoint, dungeon) {
     dungeonWidth = dungeon.width;
     dungeonHeight = dungeon.height;
     tileSize = dungeon.tileSize;
+    rampCells = [];
+    collisionGrid.forEach((row, y) => {
+        row.forEach((cell, x) => {
+            if (cell?.type === 'vertical-corridor') {
+                rampCells.push({ x, y, cell });
+            }
+        });
+    });
     camera = new pc.Entity('player-camera');
     camera.addComponent('camera', {
         clearColor: new pc.Color(0.02, 0.025, 0.02),
@@ -55,33 +64,26 @@ function tileAtWorldPosition(x, z, collisionGrid, dungeonWidth, dungeonHeight, t
     return { x: tileX, y: tileY, cell: collisionGrid[tileY]?.[tileX] };
 }
 
-function rampSidePenetration(x, z, collisionGrid, dungeonWidth, dungeonHeight, tileSize) {
+function rampSidePenetration(x, z, dungeonWidth, tileSize) {
     let penetration = 0;
     const wallThickness = 0.28;
     const innerWallEdge = tileSize / 2 - wallThickness;
 
-    for (let tileY = 0; tileY < collisionGrid.length; tileY += 1) {
-        for (let tileX = 0; tileX < (collisionGrid[tileY]?.length || 0); tileX += 1) {
-            const cell = collisionGrid[tileY][tileX];
-            if (cell?.type !== 'vertical-corridor') {
-                continue;
-            }
+    for (const ramp of rampCells) {
+        const centerX = (ramp.x - dungeonWidth / 2) * tileSize;
+        const centerZ = (ramp.y - dungeonHeight / 2) * tileSize;
+        const relativeX = x - centerX;
+        const relativeZ = z - centerZ;
+        const along = relativeX * ramp.cell.direction.x + relativeZ * ramp.cell.direction.y;
+        const across = Math.abs(relativeX * -ramp.cell.direction.y + relativeZ * ramp.cell.direction.x);
 
-            const centerX = (tileX - dungeonWidth / 2) * tileSize;
-            const centerZ = (tileY - dungeonHeight / 2) * tileSize;
-            const relativeX = x - centerX;
-            const relativeZ = z - centerZ;
-            const along = relativeX * cell.direction.x + relativeZ * cell.direction.y;
-            const across = Math.abs(relativeX * -cell.direction.y + relativeZ * cell.direction.x);
+        if (Math.abs(along) > tileSize / 2 + props.playerRadius) {
+            continue;
+        }
 
-            if (Math.abs(along) > tileSize / 2 + props.playerRadius) {
-                continue;
-            }
-
-            const overlap = across + props.playerRadius - innerWallEdge;
-            if (overlap > 0 && across < tileSize / 2 + wallThickness + props.playerRadius) {
-                penetration = Math.max(penetration, overlap);
-            }
+        const overlap = across + props.playerRadius - innerWallEdge;
+        if (overlap > 0 && across < tileSize / 2 + wallThickness + props.playerRadius) {
+            penetration = Math.max(penetration, overlap);
         }
     }
 
@@ -92,18 +94,14 @@ function isWalkableWorldPosition(x, z, collisionGrid, dungeonWidth, dungeonHeigh
     const nextRampPenetration = rampSidePenetration(
         x,
         z,
-        collisionGrid,
         dungeonWidth,
-        dungeonHeight,
         tileSize,
     );
     const currentRampPenetration = fromPosition
         ? rampSidePenetration(
             fromPosition.x,
             fromPosition.z,
-            collisionGrid,
             dungeonWidth,
-            dungeonHeight,
             tileSize,
         )
         : 0;
@@ -319,6 +317,7 @@ function getRotation() {
 function dispose() {
     removeListeners();
     keys.clear();
+    rampCells = [];
     app?.off('update', updateMovement);
     camera?.destroy?.();
     camera = null;
