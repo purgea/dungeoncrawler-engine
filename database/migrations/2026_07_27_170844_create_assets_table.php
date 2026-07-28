@@ -17,6 +17,7 @@ return new class extends Migration
             $table->string('key')->unique();
             $table->string('type');
             $table->string('path');
+            $table->string('placement')->nullable();
             $table->unsignedInteger('width')->nullable();
             $table->unsignedInteger('height')->nullable();
             $table->json('metadata')->nullable();
