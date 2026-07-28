@@ -65,7 +65,6 @@ function onUseDoor() {
             <div class="flex flex-wrap gap-2 text-xs text-[#bdb7a4]">
                 <span class="border-l border-white/15 pl-2 first:border-l-0 first:pl-0">WASD</span>
                 <span class="border-l border-white/15 pl-2">Mouse look</span>
-                <span class="border-l border-white/15 pl-2">Shift sprint</span>
                 <span class="border-l border-white/15 pl-2">Click relic</span>
                 <span class="border-l border-white/15 pl-2">Click start door</span>
             </div>

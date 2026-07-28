@@ -231,7 +231,7 @@ function installInput(canvas) {
         );
     };
     const onKeyDown = (event) => {
-        if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft'].includes(event.code)) {
+        if (['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(event.code)) {
             event.preventDefault();
         }
         keys.add(event.code);
@@ -291,7 +291,7 @@ function updateMovement(dt) {
     const yawRadians = yaw * pc.math.DEG_TO_RAD;
     const sinYaw = Math.sin(yawRadians);
     const cosYaw = Math.cos(yawRadians);
-    const speed = (keys.has('ShiftLeft') ? 8 : 4.6) * dt;
+    const speed = 8 * dt;
     const movement = moveWithCollision(
         (normalizedX * cosYaw - normalizedZ * sinYaw) * speed,
         (-normalizedX * sinYaw - normalizedZ * cosYaw) * speed,
