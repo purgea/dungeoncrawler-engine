@@ -314,6 +314,10 @@ function getRotation() {
     return { yaw, pitch };
 }
 
+function isMoving() {
+    return keys.has('KeyW') || keys.has('KeyA') || keys.has('KeyS') || keys.has('KeyD');
+}
+
 function dispose() {
     removeListeners();
     keys.clear();
@@ -330,6 +334,7 @@ defineExpose({
     setupPlayer,
     getCamera,
     getRotation,
+    isMoving,
     dispose,
 });
 </script>

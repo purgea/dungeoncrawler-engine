@@ -5,6 +5,7 @@ import DungeonRenderer from './DungeonRenderer.vue';
 import Loader from './Loader.vue';
 import Minimap from './Minimap.vue';
 import Player from './Player.vue';
+import Weapon from './Weapon.vue';
 
 const emit = defineEmits(['pickup-item', 'use-door', 'lock-change']);
 const props = defineProps({
@@ -16,12 +17,17 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    weaponAssets: {
+        type: Array,
+        default: () => [],
+    },
 });
 const viewport = ref(null);
 const app = ref(null);
 const playerComponent = ref(null);
 const dungeonRenderer = ref(null);
 const loaderComponent = ref(null);
+const weaponComponent = ref(null);
 const minimapGrid = ref([]);
 const minimapPlayer = ref(null);
 const minimapRevision = ref(0);
@@ -161,6 +167,7 @@ function updateWorld() {
     const camera = playerComponent.value?.getCamera?.();
     const rotation = playerComponent.value?.getRotation?.();
     dungeonRenderer.value?.updateDecorations?.(rotation?.yaw ?? camera?.getEulerAngles?.().y ?? 0);
+    weaponComponent.value?.setMoving?.(playerComponent.value?.isMoving?.() ?? false);
 
     if (shinyObject) {
         const t = performance.now() * 0.001;
@@ -230,6 +237,11 @@ async function start() {
             tileSize: dungeon.tileSize,
         },
     );
+    await weaponComponent.value.setupWeapon(
+        app.value,
+        playerComponent.value.getCamera(),
+        toRaw(props.weaponAssets),
+    );
     revealAroundPlayer(true);
     startDoorPosition = { ...dungeon.worldPosition(door.x, door.y, door.floor ?? currentFloor), y: (door.floor ?? currentFloor) + dungeon.wallHeight / 2 };
 
@@ -269,6 +281,7 @@ function cleanup() {
         document.exitPointerLock?.();
     }
     playerComponent.value?.dispose?.();
+    weaponComponent.value?.cleanup?.();
     app.value?.off('update', updateWorld);
     app.value?.destroy?.();
 }
@@ -301,6 +314,7 @@ defineExpose({
             @move="onPlayerMove"
             @pointer-down="onPlayerPointerDown"
         />
+        <Weapon ref="weaponComponent" />
         <DungeonRenderer ref="dungeonRenderer" :layout="dungeon" />
         <Minimap
             :grid="minimapGrid"

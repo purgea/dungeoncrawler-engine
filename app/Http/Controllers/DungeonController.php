@@ -18,6 +18,7 @@ class DungeonController extends Controller
             'dungeon' => $generator->generate($decorationAssets->toArray()),
             'musicAssets' => Asset::where('type', 'music')->get() ?? collect([]),
             'decorationAssets' => $decorationAssets,
+            'weaponAssets' => Asset::where('type', 'weapons')->get() ?? collect([]),
         ]);
     }
 }

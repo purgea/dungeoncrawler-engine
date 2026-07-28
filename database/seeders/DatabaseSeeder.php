@@ -18,6 +18,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             MusicSeeder::class,
             DecorationsSeeder::class,
+            WeaponsSeeder::class,
         ]);
     }
 
