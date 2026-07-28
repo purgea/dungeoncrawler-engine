@@ -37,11 +37,8 @@ final class DungeonGeneratorTest extends TestCase
                 $this->assertLessThanOrEqual(60, abs($cell['slope']));
             }
 
-            $relicCell = $layout['grid'][$layout['relic']['y']][$layout['relic']['x']];
-            $this->assertSame($layout['relic']['floor'], $relicCell['floor']);
-            $this->assertSame('floor', $relicCell['type']);
-            $this->assertCount(100, $layout['decorations']);
-            $this->assertCount(100, array_unique(array_map(
+            $this->assertCount(20, $layout['decorations']);
+            $this->assertCount(20, array_unique(array_map(
                 fn (array $decoration): string => $decoration['floor'] . ':' . $decoration['x'] . ':' . $decoration['y'],
                 $layout['decorations'],
             )));

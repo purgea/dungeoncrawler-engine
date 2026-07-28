@@ -26,7 +26,6 @@ class ExampleTest extends TestCase
                 ->where('dungeon.height', 63)
                 ->has('dungeon.grid', 63)
                 ->has('dungeon.spawn')
-                ->has('dungeon.door')
-                ->has('dungeon.relic'));
+                );
     }
 }

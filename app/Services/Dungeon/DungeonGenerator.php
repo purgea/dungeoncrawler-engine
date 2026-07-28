@@ -29,7 +29,6 @@ final class DungeonGenerator
      *     floors: list<int>,
      *     grid: array<int, array<int, array<string, mixed>|null>>,
      *     startRoom: array<string, int|bool>,
-     *     door: array<string, int>,
      *     spawn: array<string, int>
      *     decorations: list<array{asset: array<string, mixed>, floor: int, x: int, y: int}>
      * }
@@ -118,15 +117,7 @@ final class DungeonGenerator
             'y' => (int) floor($startRoom['y'] + $startRoom['h'] / 2),
             'floor' => $startRoom['floor'],
         ];
-        $door = $this->selectDoor($startRoom, $spawn);
-        $relic = $this->selectRelic($grid, [[
-            'floor' => $startRoom['floor'],
-            'x' => $startRoom['x'] + (int) floor($startRoom['w'] / 2),
-            'y' => $startRoom['y'] + (int) floor($startRoom['h'] / 2),
-        ]]);
-        $decorations = $this->selectDecorations($grid, [$spawn, $door, $relic], $decorationAssets);
-        foreach ($decorations as $decoration) {
-        }
+        $decorations = $this->selectDecorations($grid, [$spawn], $decorationAssets);
 
         return [
             'schemaVersion' => 1,
@@ -137,9 +128,7 @@ final class DungeonGenerator
             'floors' => self::FLOOR_ELEVATIONS,
             'grid' => $grid,
             'startRoom' => $startRoom,
-            'door' => [...$door, 'floor' => $startRoom['floor']],
             'spawn' => $spawn,
-            'relic' => $relic,
             'decorations' => $decorations,
         ];
     }

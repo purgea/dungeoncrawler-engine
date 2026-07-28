@@ -281,7 +281,7 @@ function updateDecorations(cameraYaw) {
     });
 }
 
-async function buildDungeon(appInstance, grid, material, door, doorMaterial, recessMaterial, archMaterial, decorations = []) {
+async function buildDungeon(appInstance, grid, material, decorations = []) {
     const floorThickness = 0.16;
     const wallThickness = 0.28;
     const torchMaterials = createTorchMaterials();
@@ -418,92 +418,6 @@ async function buildDungeon(appInstance, grid, material, door, doorMaterial, rec
                 material,
                 rotation,
             );
-
-            if (door && cell.floor === door.floor && x === door.x && y === door.y) {
-                    const doorOffset = {
-                        x: door.dx === 1 ? tileSize / 2 : door.dx === -1 ? -tileSize / 2 : 0,
-                        z: door.dy === 1 ? tileSize / 2 : door.dy === -1 ? -tileSize / 2 : 0,
-                    };
-                    addBox(
-                        appInstance,
-                        'start-door-wall',
-                        { x: pos.x + doorOffset.x, y: elevation + wallHeight / 2, z: pos.z + doorOffset.z },
-                        {
-                            x: door.dx === 0 ? tileSize : wallThickness,
-                            y: wallHeight,
-                            z: door.dy === 0 ? tileSize : wallThickness,
-                        },
-                        material,
-                    );
-                    addBox(
-                        appInstance,
-                        'start-door-recess',
-                        { x: pos.x + doorOffset.x * 0.92, y: elevation + wallHeight / 2, z: pos.z + doorOffset.z * 0.92 },
-                        {
-                            x: door.dx === 0 ? tileSize * 0.5 : wallThickness * 0.82,
-                            y: wallHeight * 0.84,
-                            z: door.dy === 0 ? tileSize * 0.5 : wallThickness * 0.82,
-                        },
-                        recessMaterial || material,
-                    );
-                    addBox(
-                        appInstance,
-                        'start-door-panel',
-                        { x: pos.x + doorOffset.x * 0.975, y: elevation + wallHeight / 2, z: pos.z + doorOffset.z * 0.975 },
-                        {
-                            x: door.dx === 0 ? tileSize * 0.42 : wallThickness * 0.62,
-                            y: wallHeight * 0.78,
-                            z: door.dy === 0 ? tileSize * 0.42 : wallThickness * 0.62,
-                        },
-                        doorMaterial || material,
-                    );
-                    addBox(
-                        appInstance,
-                        'start-door-arch-left',
-                        {
-                            x: pos.x + (door.dx !== 0 ? doorOffset.x : -tileSize * 0.28),
-                            y: elevation + wallHeight * 0.58,
-                            z: pos.z + (door.dy !== 0 ? doorOffset.z : -tileSize * 0.28),
-                        },
-                        {
-                            x: door.dx !== 0 ? wallThickness * 0.55 : tileSize * 0.16,
-                            y: wallHeight * 0.72,
-                            z: door.dy !== 0 ? wallThickness * 0.55 : tileSize * 0.16,
-                        },
-                        archMaterial || material,
-                    );
-                    addBox(
-                        appInstance,
-                        'start-door-arch-right',
-                        {
-                            x: pos.x + (door.dx !== 0 ? doorOffset.x : tileSize * 0.28),
-                            y: elevation + wallHeight * 0.58,
-                            z: pos.z + (door.dy !== 0 ? doorOffset.z : tileSize * 0.28),
-                        },
-                        {
-                            x: door.dx !== 0 ? wallThickness * 0.55 : tileSize * 0.16,
-                            y: wallHeight * 0.72,
-                            z: door.dy !== 0 ? wallThickness * 0.55 : tileSize * 0.16,
-                        },
-                        archMaterial || material,
-                    );
-                    addBox(
-                        appInstance,
-                        'start-door-arch-top',
-                        {
-                            x: pos.x + doorOffset.x,
-                            y: elevation + wallHeight * 0.9,
-                            z: pos.z + doorOffset.z,
-                        },
-                        {
-                            x: door.dx === 0 ? tileSize * 0.88 : wallThickness * 1.45,
-                            y: wallHeight * 0.18,
-                            z: door.dy === 0 ? tileSize * 0.88 : wallThickness * 1.45,
-                        },
-                        archMaterial || material,
-                    );
-                continue;
-            }
 
             [
                     { dx: 0, dy: -1, px: 0, pz: -tileSize / 2, sx: tileSize, sz: wallThickness },

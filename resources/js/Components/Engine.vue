@@ -7,7 +7,7 @@ import Minimap from './Minimap.vue';
 import Player from './Player.vue';
 import Weapon from './Weapon.vue';
 
-const emit = defineEmits(['pickup-item', 'use-door', 'lock-change']);
+const emit = defineEmits(['lock-change']);
 const props = defineProps({
     dungeon: {
         type: Object,
@@ -35,9 +35,6 @@ const exploredTiles = new Set();
 
 let collisionGrid = [];
 let currentFloor = 0;
-let shinyObject = null;
-let shinyObjectPosition = null;
-let startDoorPosition = null;
 let resizeObserver = null;
 
 function nextFrame() {
@@ -86,45 +83,6 @@ function revealAroundPlayer(force = false) {
     }
 }
 
-function rayIntersectsBox(rayOrigin, rayDirection, center, halfSize) {
-    const min = new pc.Vec3(center.x - halfSize.x, center.y - halfSize.y, center.z - halfSize.z);
-    const max = new pc.Vec3(center.x + halfSize.x, center.y + halfSize.y, center.z + halfSize.z);
-    let tmin = -Infinity;
-    let tmax = Infinity;
-
-    for (const axis of ['x', 'y', 'z']) {
-        if (Math.abs(rayDirection[axis]) < 1e-6) {
-            if (rayOrigin[axis] < min[axis] || rayOrigin[axis] > max[axis]) {
-                return false;
-            }
-            continue;
-        }
-
-        const invD = 1 / rayDirection[axis];
-        let t1 = (min[axis] - rayOrigin[axis]) * invD;
-        let t2 = (max[axis] - rayOrigin[axis]) * invD;
-        if (t1 > t2) {
-            [t1, t2] = [t2, t1];
-        }
-        tmin = Math.max(tmin, t1);
-        tmax = Math.min(tmax, t2);
-        if (tmax < tmin) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-function activateWinState() {
-    if (document.pointerLockElement || pc.Mouse.isPointerLocked()) {
-        app.value?.mouse?.disablePointerLock?.();
-        document.exitPointerLock?.();
-    }
-
-    window.close();
-}
-
 function resizeCanvasToViewport() {
     if (!app.value || !viewport.value) {
         return;
@@ -139,23 +97,7 @@ function onPlayerPointerDown(event) {
         return;
     }
 
-    const rayStart = camera.camera.screenToWorld(event.x, event.y, camera.camera.nearClip);
-    const rayEnd = camera.camera.screenToWorld(event.x, event.y, camera.camera.farClip);
-    const rayDirection = new pc.Vec3().sub2(rayEnd, rayStart).normalize();
-
-    if (shinyObjectPosition) {
-        const shinyHit = rayIntersectsBox(rayStart, rayDirection, shinyObjectPosition, new pc.Vec3(0.8, 0.8, 0.8));
-        if (shinyHit) {
-            emit('pickup-item');
-        }
-    }
-
-    if (startDoorPosition) {
-        const doorHit = rayIntersectsBox(rayStart, rayDirection, startDoorPosition, new pc.Vec3(1.1, 1.6, 0.25));
-        if (doorHit) {
-            emit('use-door');
-        }
-    }
+    weaponComponent.value?.fire?.(camera);
 }
 
 function onPlayerMove(movement) {
@@ -169,15 +111,6 @@ function updateWorld() {
     dungeonRenderer.value?.updateDecorations?.(rotation?.yaw ?? camera?.getEulerAngles?.().y ?? 0);
     weaponComponent.value?.setMoving?.(playerComponent.value?.isMoving?.() ?? false);
 
-    if (shinyObject) {
-        const t = performance.now() * 0.001;
-        shinyObject.setLocalEulerAngles(t * 32, t * 58, t * 18);
-        shinyObject.setLocalPosition(
-            shinyObjectPosition.x,
-            shinyObjectPosition.y + Math.sin(t * 3.2) * 0.14,
-            shinyObjectPosition.z,
-        );
-    }
 }
 
 async function start() {
@@ -208,22 +141,18 @@ async function start() {
 
     const dungeon = dungeonRenderer.value;
     const layout = toRaw(props.dungeon);
-    const { grid, door, spawn, relic, decorations = [] } = layout;
+    const { grid, spawn, decorations = [] } = layout;
     const texture = dungeon.createDungeonTexture(app.value);
     const material = dungeon.createMaterial(texture);
-    const doorTexture = dungeon.createDoorTexture(app.value);
-    const doorMaterial = dungeon.createDoorMaterial(doorTexture);
-    const recessMaterial = dungeon.createRecessMaterial(texture);
-    const archMaterial = dungeon.createArchMaterial(texture);
 
     collisionGrid = grid;
     minimapGrid.value = grid;
 
     loaderComponent.value.setMessage('Building rooms and corridors...');
     await nextFrame();
-    await dungeon.buildDungeon(app.value, grid, material, door, doorMaterial, recessMaterial, archMaterial, decorations);
+    await dungeon.buildDungeon(app.value, grid, material, decorations);
 
-    loaderComponent.value.setMessage('Placing player and relic...');
+    loaderComponent.value.setMessage('Placing player...');
     await nextFrame();
     currentFloor = spawn.floor ?? 0;
     playerComponent.value.setupPlayer(
@@ -242,29 +171,13 @@ async function start() {
         playerComponent.value.getCamera(),
         toRaw(props.weaponAssets),
     );
+    weaponComponent.value.setCollisionGrid(
+        collisionGrid,
+        dungeon.dungeonWidth,
+        dungeon.dungeonHeight,
+        dungeon.tileSize,
+    );
     revealAroundPlayer(true);
-    startDoorPosition = { ...dungeon.worldPosition(door.x, door.y, door.floor ?? currentFloor), y: (door.floor ?? currentFloor) + dungeon.wallHeight / 2 };
-
-    const shinyTile = relic;
-    const shinyPosition = {
-        ...dungeon.worldPosition(shinyTile.x, shinyTile.y, shinyTile.floor ?? 0),
-        y: (shinyTile.floor ?? 0) + 1.05,
-    };
-    shinyPosition.x += Math.random() * 1.2 - 0.6;
-    shinyPosition.z += Math.random() * 1.2 - 0.6;
-    shinyObjectPosition = shinyPosition;
-    shinyObject = new pc.Entity('shiny-object');
-    const shinyMaterial = new pc.StandardMaterial();
-    shinyMaterial.emissive.set(0.95, 0.86, 0.45);
-    shinyMaterial.emissiveIntensity = 2.5;
-    shinyMaterial.diffuse.set(0.22, 0.2, 0.08);
-    shinyMaterial.specular.set(1, 1, 0.85);
-    shinyMaterial.shininess = 96;
-    shinyMaterial.update();
-    shinyObject.addComponent('render', { type: 'sphere', material: shinyMaterial });
-    shinyObject.setLocalPosition(shinyPosition.x, shinyPosition.y, shinyPosition.z);
-    shinyObject.setLocalScale(0.8, 0.8, 0.8);
-    app.value.root.addChild(shinyObject);
 
     app.value.on('update', updateWorld);
 
@@ -275,7 +188,6 @@ async function start() {
 
 function cleanup() {
     resizeObserver?.disconnect();
-    shinyObject?.destroy?.();
     if (document.pointerLockElement || pc.Mouse.isPointerLocked()) {
         app.value?.mouse?.disablePointerLock?.();
         document.exitPointerLock?.();
