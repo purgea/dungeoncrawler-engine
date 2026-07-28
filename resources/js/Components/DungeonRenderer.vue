@@ -13,6 +13,7 @@ const dungeonHeight = props.layout.height;
 const floorElevations = props.layout.floors;
 const tileSize = props.layout.tileSize;
 const wallHeight = props.layout.wallHeight;
+const decorationEntities = [];
 
 function randomInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -225,7 +226,62 @@ function addTorch(appInstance, position, edge, materials) {
     appInstance.root.addChild(torch);
 }
 
-function buildDungeon(appInstance, grid, material, door, doorMaterial, recessMaterial, archMaterial) {
+function loadTexture(appInstance, url) {
+    return new Promise((resolve, reject) => {
+        const asset = new pc.Asset(`decoration-${url}`, 'texture', { url });
+        asset.once('load', () => {
+            const texture = asset.resource;
+            texture.addressU = pc.ADDRESS_CLAMP_TO_EDGE;
+            texture.addressV = pc.ADDRESS_CLAMP_TO_EDGE;
+            texture.minFilter = pc.FILTER_LINEAR_MIPMAP_LINEAR;
+            texture.magFilter = pc.FILTER_LINEAR;
+            resolve({ texture, width: texture.width, height: texture.height });
+        });
+        asset.once('error', () => reject(new Error(`Unable to load decoration asset: ${url}`)));
+        appInstance.assets.add(asset);
+        appInstance.assets.load(asset);
+    });
+}
+
+async function addDecoration(appInstance, decoration) {
+    const image = await loadTexture(appInstance, decoration.asset.path_url);
+    const material = new pc.StandardMaterial();
+    material.diffuseMap = image.texture;
+    material.opacityMap = image.texture;
+    material.opacityMapChannel = 'a';
+    material.diffuse.set(1, 1, 1);
+    material.opacity = 1;
+    material.alphaTest = 0.05;
+    material.blendType = pc.BLEND_NORMAL;
+    material.depthWrite = false;
+    material.cull = pc.CULLFACE_NONE;
+    material.update();
+
+    const decorationHeight = 2;
+    const decorationWidth = decorationHeight * image.width / image.height;
+    const entity = new pc.Entity(`decoration-${decoration.x}-${decoration.y}`);
+    const plane = new pc.Entity(`decoration-sprite-${decoration.x}-${decoration.y}`);
+    plane.addComponent('render', { type: 'plane', material });
+    const position = worldPosition(decoration.x, decoration.y, decoration.floor);
+    entity.setLocalPosition(position.x, decoration.floor + decorationHeight / 2, position.z);
+    plane.setLocalScale(decorationWidth, 1, decorationHeight);
+    plane.setLocalEulerAngles(90, 0, 0);
+    entity.addChild(plane);
+    appInstance.root.addChild(entity);
+    decorationEntities.push(entity);
+}
+
+function updateDecorations(cameraYaw) {
+    if (cameraYaw === null || cameraYaw === undefined) {
+        return;
+    }
+
+    decorationEntities.forEach((entity) => {
+        entity.setLocalEulerAngles(0, cameraYaw, 0);
+    });
+}
+
+async function buildDungeon(appInstance, grid, material, door, doorMaterial, recessMaterial, archMaterial, decorations = []) {
     const floorThickness = 0.16;
     const wallThickness = 0.28;
     const torchMaterials = createTorchMaterials();
@@ -496,6 +552,10 @@ function buildDungeon(appInstance, grid, material, door, doorMaterial, recessMat
         }
     }
 
+    await Promise.all(decorations.map((decoration) => (
+        decoration.asset?.path_url ? addDecoration(appInstance, decoration) : null
+    )));
+
     return;
 }
 
@@ -511,6 +571,7 @@ defineExpose({
     createRecessMaterial,
     createArchMaterial,
     buildDungeon,
+    updateDecorations,
     worldPosition,
 });
 </script>

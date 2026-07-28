@@ -40,6 +40,11 @@ final class DungeonGeneratorTest extends TestCase
             $relicCell = $layout['grid'][$layout['relic']['y']][$layout['relic']['x']];
             $this->assertSame($layout['relic']['floor'], $relicCell['floor']);
             $this->assertSame('floor', $relicCell['type']);
+            $this->assertCount(100, $layout['decorations']);
+            $this->assertCount(100, array_unique(array_map(
+                fn (array $decoration): string => $decoration['floor'] . ':' . $decoration['x'] . ':' . $decoration['y'],
+                $layout['decorations'],
+            )));
         }
     }
 }

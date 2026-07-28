@@ -16,6 +16,7 @@ class NativeAppServiceProvider implements ProvidesPhpIni
         Window::open()->maximized()
             ->webPreferences([
                 'devTools' => false,
+                'webSecurity' => false,
             ]);
     }
 

@@ -13,8 +13,14 @@ class Asset extends Model
         'path_url',
     ];
 
-    public function getPathUrlAttribute(): string
+    public function getPathUrlAttribute(): ?string
     {
-        return url('/extras/' . ltrim($this->path, '/'));
+        if (! $this->path) {
+            return null;
+        }
+
+        $path = Storage::disk('extras')->path($this->path);
+
+        return str_replace('\\', '/', 'file:///' . $path);
     }
 }

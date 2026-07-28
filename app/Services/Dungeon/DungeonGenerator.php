@@ -31,9 +31,10 @@ final class DungeonGenerator
      *     startRoom: array<string, int|bool>,
      *     door: array<string, int>,
      *     spawn: array<string, int>
+     *     decorations: list<array{asset: array<string, mixed>, floor: int, x: int, y: int}>
      * }
      */
-    public function generate(): array
+    public function generate(array $decorationAssets = []): array
     {
         $grid = array_fill(0, self::HEIGHT, array_fill(0, self::WIDTH, null));
         $firstConnectorY = random_int(8, 25);
@@ -123,6 +124,9 @@ final class DungeonGenerator
             'x' => $startRoom['x'] + (int) floor($startRoom['w'] / 2),
             'y' => $startRoom['y'] + (int) floor($startRoom['h'] / 2),
         ]]);
+        $decorations = $this->selectDecorations($grid, [$spawn, $door, $relic], $decorationAssets);
+        foreach ($decorations as $decoration) {
+        }
 
         return [
             'schemaVersion' => 1,
@@ -136,6 +140,7 @@ final class DungeonGenerator
             'door' => [...$door, 'floor' => $startRoom['floor']],
             'spawn' => $spawn,
             'relic' => $relic,
+            'decorations' => $decorations,
         ];
     }
 
@@ -299,6 +304,53 @@ final class DungeonGenerator
         }
 
         return $candidates[array_rand($candidates)];
+    }
+
+    /** @return list<array{floor: int, x: int, y: int}> */
+    private function selectDecorations(array $grid, array $excluded, array $assets): array
+    {
+        $candidates = [];
+        for ($y = 1; $y < self::HEIGHT - 1; $y++) {
+            for ($x = 1; $x < self::WIDTH - 1; $x++) {
+                $cell = $grid[$y][$x];
+                if (! $cell || $cell['type'] !== 'floor' || ! $this->isOpenRoomTile($grid, $x, $y, $cell['floor'])) {
+                    continue;
+                }
+                $blocked = false;
+                foreach ($excluded as $point) {
+                    if (($point['floor'] ?? null) === $cell['floor'] && $point['x'] === $x && $point['y'] === $y) {
+                        $blocked = true;
+                        break;
+                    }
+                }
+                if (! $blocked) {
+                    $candidates[] = ['floor' => $cell['floor'], 'x' => $x, 'y' => $y];
+                }
+            }
+        }
+        shuffle($candidates);
+
+        return array_map(fn (array $candidate): array => [
+            ...$candidate,
+            'asset' => $assets === [] ? [] : $assets[array_rand($assets)],
+        ], array_slice($candidates, 0, 20));
+    }
+
+    private function isOpenRoomTile(array $grid, int $x, int $y, int $floor): bool
+    {
+        for ($offsetY = -1; $offsetY <= 1; $offsetY++) {
+            for ($offsetX = -1; $offsetX <= 1; $offsetX++) {
+                if ($offsetX === 0 && $offsetY === 0) {
+                    continue;
+                }
+                $neighbor = $grid[$y + $offsetY][$x + $offsetX] ?? null;
+                if (! $neighbor || $neighbor['type'] !== 'floor' || $neighbor['floor'] !== $floor) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     /** @template T @param list<T> $values @return list<T> */

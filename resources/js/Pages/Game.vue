@@ -12,6 +12,10 @@ defineProps({
         type: Array,
         required: true,
     },
+    decorationAssets: {
+        type: Array,
+        required: true,
+    },
 });
 
 const hasShinyItem = ref(false);
@@ -43,6 +47,7 @@ function onUseDoor() {
         <Engine
             ref="engineComponent"
             :dungeon="dungeon"
+            :decoration-assets="decorationAssets"
             @pickup-item="onPickupItem"
             @use-door="onUseDoor"
         />

@@ -12,6 +12,10 @@ const props = defineProps({
         type: Object,
         required: true,
     },
+    decorationAssets: {
+        type: Array,
+        default: () => [],
+    },
 });
 const viewport = ref(null);
 const app = ref(null);
@@ -154,6 +158,10 @@ function onPlayerMove(movement) {
 }
 
 function updateWorld() {
+    const camera = playerComponent.value?.getCamera?.();
+    const rotation = playerComponent.value?.getRotation?.();
+    dungeonRenderer.value?.updateDecorations?.(rotation?.yaw ?? camera?.getEulerAngles?.().y ?? 0);
+
     if (shinyObject) {
         const t = performance.now() * 0.001;
         shinyObject.setLocalEulerAngles(t * 32, t * 58, t * 18);
@@ -193,7 +201,7 @@ async function start() {
 
     const dungeon = dungeonRenderer.value;
     const layout = toRaw(props.dungeon);
-    const { grid, door, spawn, relic } = layout;
+    const { grid, door, spawn, relic, decorations = [] } = layout;
     const texture = dungeon.createDungeonTexture(app.value);
     const material = dungeon.createMaterial(texture);
     const doorTexture = dungeon.createDoorTexture(app.value);
@@ -206,7 +214,7 @@ async function start() {
 
     loaderComponent.value.setMessage('Building rooms and corridors...');
     await nextFrame();
-    dungeon.buildDungeon(app.value, grid, material, door, doorMaterial, recessMaterial, archMaterial);
+    await dungeon.buildDungeon(app.value, grid, material, door, doorMaterial, recessMaterial, archMaterial, decorations);
 
     loaderComponent.value.setMessage('Placing player and relic...');
     await nextFrame();

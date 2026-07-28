@@ -12,11 +12,14 @@ use Illuminate\Support\Facades\Schema;
 
 class DungeonController extends Controller
 {
-    public function show(DungeonGenerator $generator): Response
+    public function show(DungeonGenerator $generator)
     {
+        $decorationAssets = Asset::where('type', 'decorations')->get();
+
         return Inertia::render('Game', [
-            'dungeon' => $generator->generate(),
+            'dungeon' => $generator->generate($decorationAssets->toArray()),
             'musicAssets' => Asset::where('type', 'music')->get() ?? collect([]),
+            'decorationAssets' => $decorationAssets,
         ]);
     }
 }
