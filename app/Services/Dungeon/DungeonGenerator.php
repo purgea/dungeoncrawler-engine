@@ -112,7 +112,9 @@ final class DungeonGenerator
             'y' => (int) floor($startRoom['y'] + $startRoom['h'] / 2),
             'floor' => $startRoom['floor'],
         ];
-        $decorations = $this->selectDecorations($grid, [$spawn], $decorationAssets, $width, $height, (int) ($data['decorations']['count'] ?? 20));
+        $decorationCount = (int) ($data['decorations']['count'] ?? 20);
+        $floorAssets = array_values(array_filter($decorationAssets, fn (array $asset): bool => ($asset['placement'] ?? 'floor') === 'floor'));
+        $decorations = $this->selectDecorations($grid, [$spawn], $floorAssets, $width, $height, $decorationCount);
 
         return [
             'schemaVersion' => 1,
