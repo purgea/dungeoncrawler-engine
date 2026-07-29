@@ -35,6 +35,7 @@ async function setupWeapon(appInstance, camera, weaponAssets) {
     material.alphaTest = 0.05;
     material.blendType = pc.BLEND_NORMAL;
     material.depthWrite = false;
+    material.depthTest = false;
     material.cull = pc.CULLFACE_NONE;
     material.update();
 
