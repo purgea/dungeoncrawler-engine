@@ -30,7 +30,25 @@ final class WorldSeeder extends Seeder
         foreach (range(1, 4) as $number) {
             $stage->levels()->updateOrCreate(
                 ['slug' => "1-{$number}"],
-                ['name' => "The Ruined Marches {$number}"],
+                [
+                    'name' => "The Ruined Marches {$number}",
+                    'data' => [
+                        'width' => 63,
+                        'height' => 63,
+                        'tile_size' => 4,
+                        'wall_height' => 3.3,
+                        'floors' => [0, 10, -10],
+                        'rooms' => [
+                            'count_per_floor' => 8,
+                            'min_width' => 4,
+                            'max_width' => 8,
+                            'min_height' => 4,
+                            'max_height' => 9,
+                            'placement_attempts' => 180,
+                        ],
+                        'decorations' => ['count' => 20],
+                    ],
+                ],
             );
         }
     }

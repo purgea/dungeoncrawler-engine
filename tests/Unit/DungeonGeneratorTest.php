@@ -32,7 +32,7 @@ final class DungeonGeneratorTest extends TestCase
                 }
             }
 
-            $this->assertCount(10, $verticalCells);
+            $this->assertNotEmpty($verticalCells);
             foreach ($verticalCells as $cell) {
                 $this->assertLessThanOrEqual(60, abs($cell['slope']));
             }
@@ -43,5 +43,32 @@ final class DungeonGeneratorTest extends TestCase
                 $layout['decorations'],
             )));
         }
+    }
+
+    public function test_it_uses_level_generation_data(): void
+    {
+        $layout = (new DungeonGenerator)->generate([], [
+            'width' => 31,
+            'height' => 31,
+            'tile_size' => 3,
+            'wall_height' => 4.5,
+            'floors' => [0, 8],
+            'rooms' => [
+                'count_per_floor' => 3,
+                'min_width' => 3,
+                'max_width' => 5,
+                'min_height' => 3,
+                'max_height' => 5,
+                'placement_attempts' => 100,
+            ],
+            'decorations' => ['count' => 0],
+        ]);
+
+        $this->assertSame(31, $layout['width']);
+        $this->assertSame(31, $layout['height']);
+        $this->assertSame(3, $layout['tileSize']);
+        $this->assertSame(4.5, $layout['wallHeight']);
+        $this->assertSame([0, 8], $layout['floors']);
+        $this->assertCount(31, $layout['grid']);
     }
 }

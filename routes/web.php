@@ -8,6 +8,6 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', [HomeController::class, 'index'])->name('home');
 Route::get('/loading', [HomeController::class, 'show'])->name('loading');
 
-Route::get('/game', [DungeonController::class, 'show'])->name('game');
+Route::get('/game/{level:slug}', [DungeonController::class, 'show'])->name('game');
 
 Route::get('/extras/{asset:path}', [AssetController::class, 'show'])->name('assets.show');

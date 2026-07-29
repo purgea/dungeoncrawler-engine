@@ -16,6 +16,7 @@ return new class extends Migration
             $table->foreignId('world_stage_id')->constrained();
             $table->string('name');
             $table->string('slug')->unique();
+            $table->json('data')->nullable();
             $table->timestamps();
         });
     }

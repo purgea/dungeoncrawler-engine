@@ -8,17 +8,6 @@ use RuntimeException;
 
 final class DungeonGenerator
 {
-    public const WIDTH = 63;
-
-    public const HEIGHT = 63;
-
-    public const TILE_SIZE = 4;
-
-    public const WALL_HEIGHT = 3.3;
-
-    /** @var list<int> */
-    private const FLOOR_ELEVATIONS = [0, 10, -10];
-
     /**
      * @return array{
      *     schemaVersion: int,
@@ -33,36 +22,44 @@ final class DungeonGenerator
      *     decorations: list<array{asset: array<string, mixed>, floor: int, x: int, y: int}>
      * }
      */
-    public function generate(array $decorationAssets = []): array
+    public function generate(array $decorationAssets = [], array $data = []): array
     {
-        $grid = array_fill(0, self::HEIGHT, array_fill(0, self::WIDTH, null));
-        $firstConnectorY = random_int(8, 25);
-        $secondConnectorY = random_int(35, 53);
-        $regionFloors = $this->shuffled(self::FLOOR_ELEVATIONS);
+        $width = max(15, (int) ($data['width'] ?? 63));
+        $height = max(15, (int) ($data['height'] ?? 63));
+        $tileSize = max(1, (int) ($data['tile_size'] ?? 4));
+        $wallHeight = max(0.1, (float) ($data['wall_height'] ?? 3.3));
+        $floorElevations = array_values($data['floors'] ?? [0, 10, -10]);
+        $roomConfig = $data['rooms'] ?? [];
+        $roomCount = max(1, (int) ($roomConfig['count_per_floor'] ?? 8));
+        $minRoomWidth = max(3, (int) ($roomConfig['min_width'] ?? 4));
+        $maxRoomWidth = max($minRoomWidth, (int) ($roomConfig['max_width'] ?? 8));
+        $minRoomHeight = max(3, (int) ($roomConfig['min_height'] ?? 4));
+        $maxRoomHeight = max($minRoomHeight, (int) ($roomConfig['max_height'] ?? 9));
+        $placementAttempts = max(1, (int) ($roomConfig['placement_attempts'] ?? 180));
+        $grid = array_fill(0, $height, array_fill(0, $width, null));
+        $regionFloors = $this->shuffled($floorElevations);
+        $regionWidth = (int) floor(($width - 6) / max(1, count($regionFloors)));
         $floorRegions = [
-            ['floor' => $regionFloors[0], 'minX' => 2, 'maxX' => 20],
-            ['floor' => $regionFloors[1], 'minX' => 24, 'maxX' => 40],
-            ['floor' => $regionFloors[2], 'minX' => 44, 'maxX' => self::WIDTH - 3],
+            ...array_map(fn (int $floor, int $index): array => [
+                'floor' => $floor,
+                'minX' => 2 + $index * ($regionWidth + 2),
+                'maxX' => min($width - 3, 2 + ($index + 1) * $regionWidth),
+            ], $regionFloors, array_keys($regionFloors)),
         ];
-        $rooms = [
-            ['floor' => $regionFloors[0], 'x' => 16, 'y' => $firstConnectorY - 3, 'w' => 5, 'h' => 7, 'gateway' => true],
-            ['floor' => $regionFloors[1], 'x' => 24, 'y' => $firstConnectorY - 3, 'w' => 5, 'h' => 7, 'gateway' => true],
-            ['floor' => $regionFloors[1], 'x' => 36, 'y' => $secondConnectorY - 3, 'w' => 5, 'h' => 7, 'gateway' => true],
-            ['floor' => $regionFloors[2], 'x' => 44, 'y' => $secondConnectorY - 3, 'w' => 5, 'h' => 7, 'gateway' => true],
-        ];
+        $rooms = [];
 
         foreach ($rooms as $room) {
             $this->carveRoom($grid, $room);
         }
 
         foreach ($floorRegions as $region) {
-            for ($attempt = 0; $attempt < 180 && $this->roomCount($rooms, $region['floor']) < 8; $attempt++) {
+            for ($attempt = 0; $attempt < $placementAttempts && $this->roomCount($rooms, $region['floor']) < $roomCount; $attempt++) {
                 $room = [
                     'floor' => $region['floor'],
-                    'w' => random_int(4, min(8, $region['maxX'] - $region['minX'] - 1)),
-                    'h' => random_int(4, 9),
+                    'w' => random_int($minRoomWidth, min($maxRoomWidth, $region['maxX'] - $region['minX'] - 1)),
+                    'h' => random_int($minRoomHeight, $maxRoomHeight),
                     'x' => random_int($region['minX'], $region['maxX'] - 7),
-                    'y' => random_int(2, self::HEIGHT - 11),
+                    'y' => random_int(2, $height - $maxRoomHeight - 2),
                     'gateway' => false,
                 ];
 
@@ -75,7 +72,7 @@ final class DungeonGenerator
             }
         }
 
-        foreach (self::FLOOR_ELEVATIONS as $floor) {
+        foreach ($floorElevations as $floor) {
             $centers = [];
             foreach ($rooms as $room) {
                 if ($room['floor'] !== $floor) {
@@ -94,16 +91,12 @@ final class DungeonGenerator
             }
         }
 
-        $this->carveVerticalCorridor(
-            $grid,
-            ['x' => 20, 'y' => $firstConnectorY, 'floor' => $regionFloors[0]],
-            ['x' => 24, 'y' => $firstConnectorY, 'floor' => $regionFloors[1]],
-        );
-        $this->carveVerticalCorridor(
-            $grid,
-            ['x' => 40, 'y' => $secondConnectorY, 'floor' => $regionFloors[1]],
-            ['x' => 44, 'y' => $secondConnectorY, 'floor' => $regionFloors[2]],
-        );
+        for ($index = 1; $index < count($regionFloors); $index++) {
+            $fromX = $floorRegions[$index - 1]['maxX'];
+            $toX = $floorRegions[$index]['minX'];
+            $connectorY = random_int(3, $height - 4);
+            $this->carveVerticalCorridor($grid, ['x' => $fromX, 'y' => $connectorY, 'floor' => $regionFloors[$index - 1]], ['x' => $toX, 'y' => $connectorY, 'floor' => $regionFloors[$index]], $tileSize);
+        }
 
         $startRooms = array_values(array_filter(
             $rooms,
@@ -117,15 +110,15 @@ final class DungeonGenerator
             'y' => (int) floor($startRoom['y'] + $startRoom['h'] / 2),
             'floor' => $startRoom['floor'],
         ];
-        $decorations = $this->selectDecorations($grid, [$spawn], $decorationAssets);
+        $decorations = $this->selectDecorations($grid, [$spawn], $decorationAssets, $width, $height, (int) ($data['decorations']['count'] ?? 20));
 
         return [
             'schemaVersion' => 1,
-            'width' => self::WIDTH,
-            'height' => self::HEIGHT,
-            'tileSize' => self::TILE_SIZE,
-            'wallHeight' => self::WALL_HEIGHT,
-            'floors' => self::FLOOR_ELEVATIONS,
+            'width' => $width,
+            'height' => $height,
+            'tileSize' => $tileSize,
+            'wallHeight' => $wallHeight,
+            'floors' => $floorElevations,
             'grid' => $grid,
             'startRoom' => $startRoom,
             'spawn' => $spawn,
@@ -180,12 +173,12 @@ final class DungeonGenerator
     }
 
     /** @param array<int, array<int, array<string, mixed>|null>> $grid */
-    private function carveVerticalCorridor(array &$grid, array $from, array $to): void
+    private function carveVerticalCorridor(array &$grid, array $from, array $to, int $tileSize): void
     {
         $distance = abs($to['x'] - $from['x']) + abs($to['y'] - $from['y']);
         $tileCount = $distance + 1;
         $elevationDelta = $to['floor'] - $from['floor'];
-        $slope = rad2deg(atan2($elevationDelta, $tileCount * self::TILE_SIZE));
+        $slope = rad2deg(atan2($elevationDelta, $tileCount * $tileSize));
 
         if (abs($slope) > 60) {
             throw new RuntimeException(sprintf('Vertical corridor slope %.1f exceeds 60 degrees.', abs($slope)));
@@ -244,63 +237,12 @@ final class DungeonGenerator
         throw new RuntimeException("No room was generated on floor {$floor}.");
     }
 
-    /** @return array{x: int, y: int, dx: int, dy: int} */
-    private function selectDoor(array $room, array $spawn): array
-    {
-        $candidates = [];
-        for ($x = $room['x']; $x < $room['x'] + $room['w']; $x++) {
-            $candidates[] = ['x' => $x, 'y' => $room['y'], 'dx' => 0, 'dy' => -1];
-            $candidates[] = ['x' => $x, 'y' => $room['y'] + $room['h'] - 1, 'dx' => 0, 'dy' => 1];
-        }
-        for ($y = $room['y'] + 1; $y < $room['y'] + $room['h'] - 1; $y++) {
-            $candidates[] = ['x' => $room['x'], 'y' => $y, 'dx' => -1, 'dy' => 0];
-            $candidates[] = ['x' => $room['x'] + $room['w'] - 1, 'y' => $y, 'dx' => 1, 'dy' => 0];
-        }
-
-        usort($candidates, fn (array $a, array $b): int => hypot($a['x'] - $spawn['x'], $a['y'] - $spawn['y'])
-            <=> hypot($b['x'] - $spawn['x'], $b['y'] - $spawn['y'])
-        );
-
-        return $candidates[0];
-    }
-
-    /** @return array{floor: int, x: int, y: int} */
-    private function selectRelic(array $grid, array $excluded): array
-    {
-        $candidates = [];
-        for ($y = 1; $y < self::HEIGHT - 1; $y++) {
-            for ($x = 1; $x < self::WIDTH - 1; $x++) {
-                $cell = $grid[$y][$x];
-                if (! $cell || $cell['type'] === 'vertical-corridor') {
-                    continue;
-                }
-
-                $isExcluded = false;
-                foreach ($excluded as $point) {
-                    if ($point['floor'] === $cell['floor'] && $point['x'] === $x && $point['y'] === $y) {
-                        $isExcluded = true;
-                        break;
-                    }
-                }
-                if (! $isExcluded) {
-                    $candidates[] = ['floor' => $cell['floor'], 'x' => $x, 'y' => $y];
-                }
-            }
-        }
-
-        if ($candidates === []) {
-            throw new RuntimeException('No valid relic tile was generated.');
-        }
-
-        return $candidates[array_rand($candidates)];
-    }
-
     /** @return list<array{floor: int, x: int, y: int}> */
-    private function selectDecorations(array $grid, array $excluded, array $assets): array
+    private function selectDecorations(array $grid, array $excluded, array $assets, int $width, int $height, int $count): array
     {
         $candidates = [];
-        for ($y = 1; $y < self::HEIGHT - 1; $y++) {
-            for ($x = 1; $x < self::WIDTH - 1; $x++) {
+        for ($y = 1; $y < $height - 1; $y++) {
+            for ($x = 1; $x < $width - 1; $x++) {
                 $cell = $grid[$y][$x];
                 if (! $cell || $cell['type'] !== 'floor' || ! $this->isOpenRoomTile($grid, $x, $y, $cell['floor'])) {
                     continue;
@@ -322,7 +264,7 @@ final class DungeonGenerator
         return array_map(fn (array $candidate): array => [
             ...$candidate,
             'asset' => $assets === [] ? [] : $assets[array_rand($assets)],
-        ], array_slice($candidates, 0, 20));
+        ], array_slice($candidates, 0, $count));
     }
 
     private function isOpenRoomTile(array $grid, int $x, int $y, int $floor): bool

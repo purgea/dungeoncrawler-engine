@@ -4,7 +4,7 @@ import { router } from '@inertiajs/vue3';
 defineProps({ world: { type: Object, default: null } });
 
 function beginAdventure() {
-    router.visit('/game');
+    router.visit('/loading');
 }
 </script>
 

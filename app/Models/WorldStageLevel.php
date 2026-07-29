@@ -8,6 +8,10 @@ class WorldStageLevel extends Model
 {
     protected $guarded = [];
 
+    protected $casts = [
+        'data' => 'array'
+    ];
+
     public function stage()
     {
         return $this->belongsTo(WorldStage::class);
