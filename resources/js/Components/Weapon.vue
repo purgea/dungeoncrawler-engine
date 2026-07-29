@@ -27,12 +27,16 @@ async function setupWeapon(appInstance, camera, weaponAssets) {
 
     app = appInstance;
     const texture = await loadTexture(app, weaponAssets[0].path_url);
+    texture.addressU = pc.ADDRESS_CLAMP_TO_EDGE;
+    texture.addressV = pc.ADDRESS_CLAMP_TO_EDGE;
+    texture.minFilter = pc.FILTER_LINEAR;
+    texture.magFilter = pc.FILTER_LINEAR;
     const material = new pc.StandardMaterial();
     material.diffuseMap = texture;
     material.opacityMap = texture;
     material.opacityMapChannel = 'a';
     material.diffuse.set(1, 1, 1);
-    material.alphaTest = 0.05;
+    material.alphaTest = 0.5;
     material.blendType = pc.BLEND_NORMAL;
     material.depthWrite = false;
     material.depthTest = false;
