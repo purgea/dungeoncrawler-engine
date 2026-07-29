@@ -8,6 +8,7 @@ use RuntimeException;
 
 final class DungeonGenerator
 {
+    private SeededRandom $random;
     /**
      * @return array{
      *     schemaVersion: int,
@@ -22,8 +23,9 @@ final class DungeonGenerator
      *     decorations: list<array{asset: array<string, mixed>, floor: int, x: int, y: int}>
      * }
      */
-    public function generate(array $decorationAssets = [], array $data = []): array
+    public function generate(array $decorationAssets = [], array $data = [], int $seed = 1): array
     {
+        $this->random = new SeededRandom($seed);
         $width = max(15, (int) ($data['width'] ?? 63));
         $height = max(15, (int) ($data['height'] ?? 63));
         $tileSize = max(1, (int) ($data['tile_size'] ?? 4));
@@ -56,10 +58,10 @@ final class DungeonGenerator
             for ($attempt = 0; $attempt < $placementAttempts && $this->roomCount($rooms, $region['floor']) < $roomCount; $attempt++) {
                 $room = [
                     'floor' => $region['floor'],
-                    'w' => random_int($minRoomWidth, min($maxRoomWidth, $region['maxX'] - $region['minX'] - 1)),
-                    'h' => random_int($minRoomHeight, $maxRoomHeight),
-                    'x' => random_int($region['minX'], $region['maxX'] - 7),
-                    'y' => random_int(2, $height - $maxRoomHeight - 2),
+                    'w' => $this->random->int($minRoomWidth, min($maxRoomWidth, $region['maxX'] - $region['minX'] - 1)),
+                    'h' => $this->random->int($minRoomHeight, $maxRoomHeight),
+                    'x' => $this->random->int($region['minX'], max($region['minX'], $region['maxX'] - $maxRoomWidth)),
+                    'y' => $this->random->int(2, $height - $maxRoomHeight - 2),
                     'gateway' => false,
                 ];
 
@@ -94,7 +96,7 @@ final class DungeonGenerator
         for ($index = 1; $index < count($regionFloors); $index++) {
             $fromX = $floorRegions[$index - 1]['maxX'];
             $toX = $floorRegions[$index]['minX'];
-            $connectorY = random_int(3, $height - 4);
+            $connectorY = $this->random->int(3, $height - 4);
             $this->carveVerticalCorridor($grid, ['x' => $fromX, 'y' => $connectorY, 'floor' => $regionFloors[$index - 1]], ['x' => $toX, 'y' => $connectorY, 'floor' => $regionFloors[$index]], $tileSize);
         }
 
@@ -103,7 +105,7 @@ final class DungeonGenerator
             fn (array $room): bool => $room['floor'] === 0 && ! $room['gateway'],
         ));
         $startRoom = $startRooms !== []
-            ? $startRooms[array_rand($startRooms)]
+            ? $this->random->pick($startRooms)
             : $this->firstRoomOnFloor($rooms, 0);
         $spawn = [
             'x' => (int) floor($startRoom['x'] + $startRoom['w'] / 2),
@@ -163,7 +165,7 @@ final class DungeonGenerator
             }
         };
 
-        if (random_int(0, 1) === 1) {
+        if ($this->random->int(0, 1) === 1) {
             $carveX($from['x'], $to['x'], $from['y']);
             $carveY($from['y'], $to['y'], $to['x']);
         } else {
@@ -259,11 +261,11 @@ final class DungeonGenerator
                 }
             }
         }
-        shuffle($candidates);
+        $candidates = $this->random->shuffle($candidates);
 
         return array_map(fn (array $candidate): array => [
             ...$candidate,
-            'asset' => $assets === [] ? [] : $assets[array_rand($assets)],
+            'asset' => $assets === [] ? [] : $this->random->pick($assets),
         ], array_slice($candidates, 0, $count));
     }
 
@@ -287,8 +289,6 @@ final class DungeonGenerator
     /** @template T @param list<T> $values @return list<T> */
     private function shuffled(array $values): array
     {
-        shuffle($values);
-
-        return $values;
+        return $this->random->shuffle($values);
     }
 }

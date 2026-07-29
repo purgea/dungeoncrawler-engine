@@ -71,4 +71,22 @@ final class DungeonGeneratorTest extends TestCase
         $this->assertSame([0, 8], $layout['floors']);
         $this->assertCount(31, $layout['grid']);
     }
+
+    public function test_same_seed_produces_the_same_layout(): void
+    {
+        $generator = new DungeonGenerator;
+        $first = $generator->generate([], [], 123456);
+        $second = $generator->generate([], [], 123456);
+
+        $this->assertSame($first, $second);
+    }
+
+    public function test_different_seeds_produce_different_layouts(): void
+    {
+        $generator = new DungeonGenerator;
+        $first = $generator->generate([], [], 123456);
+        $second = $generator->generate([], [], 654321);
+
+        $this->assertNotSame($first['grid'], $second['grid']);
+    }
 }
