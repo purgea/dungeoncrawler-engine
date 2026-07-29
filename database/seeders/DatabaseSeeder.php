@@ -2,9 +2,9 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Native\Desktop\Facades\Settings;
 
 class DatabaseSeeder extends Seeder
 {
@@ -19,7 +19,10 @@ class DatabaseSeeder extends Seeder
             MusicSeeder::class,
             DecorationsSeeder::class,
             WeaponsSeeder::class,
+            WorldSeeder::class,
         ]);
+
+        Settings::set('seeded', true);
     }
 
 }

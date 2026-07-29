@@ -2,8 +2,10 @@
 
 namespace App\Providers;
 
-use Native\Desktop\Facades\Window;
+use Illuminate\Support\Facades\Artisan;
 use Native\Desktop\Contracts\ProvidesPhpIni;
+use Native\Desktop\Facades\Window;
+use Native\Desktop\Facades\Settings;
 
 class NativeAppServiceProvider implements ProvidesPhpIni
 {
@@ -13,6 +15,12 @@ class NativeAppServiceProvider implements ProvidesPhpIni
      */
     public function boot(): void
     {
+        // TODO: Remove this forget statement before release
+        Settings::forget('seeded');
+        if (! Settings::get('seeded', false)) {
+            Artisan::call('db:seed');
+        }
+
         Window::open()->maximized()
             ->webPreferences([
                 'devTools' => true,

@@ -2,12 +2,11 @@
 
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\DungeonController;
+use App\Http\Controllers\HomeController;
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
 
-Route::get('/', function () {
-    return Inertia::render('Loading');
-});
+Route::get('/', [HomeController::class, 'index'])->name('home');
+Route::get('/loading', [HomeController::class, 'show'])->name('loading');
 
 Route::get('/game', [DungeonController::class, 'show'])->name('game');
 
