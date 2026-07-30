@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit;
 
 use App\Services\Dungeon\DungeonGenerator;
+use App\Services\Dungeon\SeededRandom;
 use PHPUnit\Framework\TestCase;
 
 final class DungeonGeneratorTest extends TestCase
@@ -36,6 +37,7 @@ final class DungeonGeneratorTest extends TestCase
             foreach ($verticalCells as $cell) {
                 $this->assertLessThanOrEqual(60, abs($cell['slope']));
             }
+            $this->assertVerticalCorridorsConnectToFloors($layout['grid']);
 
             $this->assertCount(20, $layout['decorations']);
             $this->assertCount(20, array_unique(array_map(
@@ -88,5 +90,48 @@ final class DungeonGeneratorTest extends TestCase
         $second = $generator->generate([], [], 654321);
 
         $this->assertNotSame($first['grid'], $second['grid']);
+    }
+
+    public function test_maximum_persistable_seed_survives_a_json_round_trip(): void
+    {
+        $storedSeed = json_decode(json_encode(SeededRandom::MAX_SEED, JSON_THROW_ON_ERROR), true, 512, JSON_THROW_ON_ERROR);
+
+        $this->assertSame(SeededRandom::MAX_SEED, $storedSeed);
+
+        $generator = new DungeonGenerator;
+        $this->assertSame(
+            $generator->generate([], [], SeededRandom::MAX_SEED),
+            $generator->generate([], [], $storedSeed),
+        );
+    }
+
+    private function assertVerticalCorridorsConnectToFloors(array $grid): void
+    {
+        foreach ($grid as $y => $row) {
+            foreach ($row as $x => $cell) {
+                if (($cell['type'] ?? null) !== 'vertical-corridor') {
+                    continue;
+                }
+
+                $direction = $cell['direction'];
+                $previous = $grid[$y - $direction['y']][$x - $direction['x']] ?? null;
+                if (($previous['type'] ?? null) === 'vertical-corridor') {
+                    continue;
+                }
+
+                $cursorX = $x;
+                $cursorY = $y;
+                while (($grid[$cursorY][$cursorX]['type'] ?? null) === 'vertical-corridor') {
+                    $last = $grid[$cursorY][$cursorX];
+                    $cursorX += $direction['x'];
+                    $cursorY += $direction['y'];
+                }
+
+                $this->assertSame('floor', $previous['type'] ?? null, 'Ramp is missing its entrance floor.');
+                $this->assertSame($cell['floor'], $previous['floor'] ?? null);
+                $this->assertSame('floor', $grid[$cursorY][$cursorX]['type'] ?? null, 'Ramp is missing its exit floor.');
+                $this->assertSame($last['floor'], $grid[$cursorY][$cursorX]['floor'] ?? null);
+            }
+        }
     }
 }

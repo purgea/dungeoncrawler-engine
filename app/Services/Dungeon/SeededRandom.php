@@ -9,6 +9,8 @@ use Random\Randomizer;
 
 final class SeededRandom
 {
+    public const MAX_SEED = 2_147_483_647;
+
     private Randomizer $randomizer;
 
     public function __construct(int $seed)

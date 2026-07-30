@@ -49,6 +49,39 @@ final class DungeonGenerator
             ], $regionFloors, array_keys($regionFloors)),
         ];
         $rooms = [];
+        $verticalCorridors = [];
+
+        for ($index = 1; $index < count($regionFloors); $index++) {
+            $fromX = $floorRegions[$index - 1]['maxX'];
+            $toX = $floorRegions[$index]['minX'];
+            $connectorY = $this->random->int(3, $height - 4);
+            $gatewayHeight = min(7, $height - 2);
+            $gatewayY = max(1, min($connectorY - intdiv($gatewayHeight, 2), $height - $gatewayHeight - 1));
+
+            $fromGateway = [
+                'floor' => $regionFloors[$index - 1],
+                'x' => max($floorRegions[$index - 1]['minX'], $fromX - 4),
+                'y' => $gatewayY,
+                'w' => min(5, $fromX - $floorRegions[$index - 1]['minX'] + 1),
+                'h' => $gatewayHeight,
+                'gateway' => true,
+            ];
+            $toGateway = [
+                'floor' => $regionFloors[$index],
+                'x' => $toX,
+                'y' => $gatewayY,
+                'w' => min(5, $floorRegions[$index]['maxX'] - $toX + 1),
+                'h' => $gatewayHeight,
+                'gateway' => true,
+            ];
+
+            $rooms[] = $fromGateway;
+            $rooms[] = $toGateway;
+            $verticalCorridors[] = [
+                'from' => ['x' => $fromX, 'y' => $connectorY, 'floor' => $regionFloors[$index - 1]],
+                'to' => ['x' => $toX, 'y' => $connectorY, 'floor' => $regionFloors[$index]],
+            ];
+        }
 
         foreach ($rooms as $room) {
             $this->carveRoom($grid, $room);
@@ -93,11 +126,8 @@ final class DungeonGenerator
             }
         }
 
-        for ($index = 1; $index < count($regionFloors); $index++) {
-            $fromX = $floorRegions[$index - 1]['maxX'];
-            $toX = $floorRegions[$index]['minX'];
-            $connectorY = $this->random->int(3, $height - 4);
-            $this->carveVerticalCorridor($grid, ['x' => $fromX, 'y' => $connectorY, 'floor' => $regionFloors[$index - 1]], ['x' => $toX, 'y' => $connectorY, 'floor' => $regionFloors[$index]], $tileSize);
+        foreach ($verticalCorridors as $corridor) {
+            $this->carveVerticalCorridor($grid, $corridor['from'], $corridor['to'], $tileSize);
         }
 
         $startRooms = array_values(array_filter(
