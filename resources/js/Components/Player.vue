@@ -2,7 +2,7 @@
 import { onBeforeUnmount } from 'vue';
 import * as pc from 'playcanvas';
 
-const emit = defineEmits(['lock-change', 'move', 'pointer-down']);
+const emit = defineEmits(['lock-change', 'move', 'pointer-down', 'pointer-up']);
 
 const props = defineProps({
     playerRadius: {
@@ -252,12 +252,16 @@ function installInput(canvas) {
         );
     };
     const onPointerDown = (event) => emit('pointer-down', event);
+    const onPointerUp = (event) => emit('pointer-up', event);
+    const onWindowBlur = () => emit('pointer-up', { button: pc.MOUSEBUTTON_LEFT });
 
     app.mouse.disableContextMenu();
     app.mouse.on(pc.Mouse.EVENT_MOUSEMOVE, onMouseMove);
     app.mouse.on(pc.Mouse.EVENT_MOUSEDOWN, onPointerDown);
+    app.mouse.on(pc.Mouse.EVENT_MOUSEUP, onPointerUp);
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onWindowBlur);
     document.body.addEventListener('click', lockMouse);
     document.addEventListener('pointerlockchange', onPointerLockChange);
     document.addEventListener('pointerlockerror', onPointerLockError);
@@ -265,8 +269,10 @@ function installInput(canvas) {
     removeListeners = () => {
         app?.mouse?.off(pc.Mouse.EVENT_MOUSEMOVE, onMouseMove);
         app?.mouse?.off(pc.Mouse.EVENT_MOUSEDOWN, onPointerDown);
+        app?.mouse?.off(pc.Mouse.EVENT_MOUSEUP, onPointerUp);
         window.removeEventListener('keydown', onKeyDown);
         window.removeEventListener('keyup', onKeyUp);
+        window.removeEventListener('blur', onWindowBlur);
         document.body.removeEventListener('click', lockMouse);
         document.removeEventListener('pointerlockchange', onPointerLockChange);
         document.removeEventListener('pointerlockerror', onPointerLockError);

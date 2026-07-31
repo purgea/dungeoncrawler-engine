@@ -36,6 +36,7 @@ const exploredTiles = new Set();
 let collisionGrid = [];
 let currentFloor = 0;
 let resizeObserver = null;
+let leftMouseHeld = false;
 
 function nextFrame() {
     return new Promise((resolve) => requestAnimationFrame(resolve));
@@ -97,7 +98,22 @@ function onPlayerPointerDown(event) {
         return;
     }
 
+    leftMouseHeld = true;
     weaponComponent.value?.fire?.(camera);
+}
+
+function onPlayerPointerUp(event) {
+    if (event.button === pc.MOUSEBUTTON_LEFT) {
+        leftMouseHeld = false;
+    }
+}
+
+function onPlayerLockChange(locked) {
+    if (!locked) {
+        leftMouseHeld = false;
+    }
+
+    emit('lock-change', locked);
 }
 
 function onPlayerMove(movement) {
@@ -110,6 +126,10 @@ function updateWorld() {
     const rotation = playerComponent.value?.getRotation?.();
     dungeonRenderer.value?.updateDecorations?.(rotation?.yaw ?? camera?.getEulerAngles?.().y ?? 0);
     weaponComponent.value?.setMoving?.(playerComponent.value?.isMoving?.() ?? false);
+
+    if (leftMouseHeld && camera) {
+        weaponComponent.value?.fire?.(camera);
+    }
 
 }
 
@@ -187,6 +207,7 @@ async function start() {
 }
 
 function cleanup() {
+    leftMouseHeld = false;
     resizeObserver?.disconnect();
     if (document.pointerLockElement || pc.Mouse.isPointerLocked()) {
         app.value?.mouse?.disablePointerLock?.();
@@ -222,9 +243,10 @@ defineExpose({
         <Player
             ref="playerComponent"
             :player-radius="0.62"
-            @lock-change="emit('lock-change', $event)"
+            @lock-change="onPlayerLockChange"
             @move="onPlayerMove"
             @pointer-down="onPlayerPointerDown"
+            @pointer-up="onPlayerPointerUp"
         />
         <Weapon ref="weaponComponent" />
         <DungeonRenderer ref="dungeonRenderer" :layout="dungeon" />
