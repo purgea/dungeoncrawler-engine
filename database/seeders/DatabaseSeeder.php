@@ -16,13 +16,12 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call([
+            WorldSeeder::class,
             MusicSeeder::class,
             DecorationsSeeder::class,
             WeaponsSeeder::class,
-            WorldSeeder::class,
         ]);
 
         Settings::set('seeded', true);
     }
-
 }

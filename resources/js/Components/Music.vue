@@ -9,9 +9,12 @@ const props = defineProps({
 });
 
 let soundtrack = null;
-const soundtrackUrl = props.musicAssets[0]?.path_url;
 
 async function start() {
+    const availableAssets = props.musicAssets.filter((asset) => asset.path_url);
+    const selectedAsset = availableAssets[Math.floor(Math.random() * availableAssets.length)];
+    const soundtrackUrl = selectedAsset?.path_url;
+
     if (!soundtrackUrl) {
         console.warn('No music assets are available.');
         return;

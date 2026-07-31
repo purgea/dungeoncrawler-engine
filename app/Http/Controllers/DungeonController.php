@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace App\Http\Controllers;
 
 use App\Models\Asset;
@@ -15,7 +13,12 @@ class DungeonController extends Controller
 {
     public function show(WorldStageLevel $level, DungeonGenerator $generator)
     {
-        $decorationAssets = Asset::where('type', 'decorations')->get();
+        $stage = $level->stage;
+
+        $decorationAssets = Asset::where('type', 'decorations')->get() ?? [];
+        $musicAssets = Asset::where('type', 'music')->where('world_id', $stage->world_id)->where('world_stage_id', $stage->id)->get() ?? [];
+        $weaponAssets = Asset::where('type', 'weapons')->get() ?? [];
+
         $seed = Settings::get('current_level_seed');
         if ($seed === null) {
             $seed = random_int(1, SeededRandom::MAX_SEED);
@@ -24,9 +27,9 @@ class DungeonController extends Controller
 
         return Inertia::render('Game', [
             'dungeon' => $generator->generate($decorationAssets->toArray(), $level->data ?? [], (int) $seed),
-            'musicAssets' => Asset::where('type', 'music')->get() ?? collect([]),
+            'musicAssets' => $musicAssets,
             'decorationAssets' => $decorationAssets,
-            'weaponAssets' => Asset::where('type', 'weapons')->get() ?? collect([]),
+            'weaponAssets' => $weaponAssets,
         ]);
     }
 }

@@ -14,6 +14,6 @@ class WorldStageLevel extends Model
 
     public function stage()
     {
-        return $this->belongsTo(WorldStage::class);
+        return $this->belongsTo(WorldStage::class, 'world_stage_id');
     }
 }
