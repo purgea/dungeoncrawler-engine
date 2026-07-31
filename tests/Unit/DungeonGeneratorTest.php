@@ -52,7 +52,7 @@ final class DungeonGeneratorTest extends TestCase
             'height' => 31,
             'tile_size' => 3,
             'wall_height' => 4.5,
-            'floors' => [0, 8],
+            'floor_count' => 2,
             'rooms' => [
                 'count_per_floor' => 3,
                 'min_width' => 3,
@@ -68,8 +68,57 @@ final class DungeonGeneratorTest extends TestCase
         $this->assertSame(31, $layout['height']);
         $this->assertSame(3, $layout['tileSize']);
         $this->assertSame(4.5, $layout['wallHeight']);
-        $this->assertSame([0, 8], $layout['floors']);
+        $this->assertCount(2, $layout['floors']);
+        $this->assertContains(0, $layout['floors']);
+        $this->assertSame(10, $layout['floors'][1] - $layout['floors'][0]);
         $this->assertCount(31, $layout['grid']);
+    }
+
+    public function test_floor_count_generates_a_seeded_bounded_floor_sequence(): void
+    {
+        $generator = new DungeonGenerator;
+        $first = $generator->generate([], ['floor_count' => 5], 123456);
+        $second = $generator->generate([], ['floor_count' => 5], 123456);
+
+        $floors = $first['floors'];
+        $this->assertSame($first['floors'], $second['floors']);
+        $this->assertCount(5, $floors);
+        $this->assertSame(0, $floors[0] % 10);
+        $this->assertSame(0, $floors[4] % 10);
+        $this->assertGreaterThanOrEqual(-40, $floors[0]);
+        $this->assertLessThanOrEqual(40, $floors[4]);
+        $this->assertContains(0, $floors);
+
+        for ($index = 1; $index < count($floors); $index++) {
+            $this->assertSame(10, $floors[$index] - $floors[$index - 1]);
+        }
+    }
+
+    public function test_it_connects_only_adjacent_floors_with_one_to_three_ramps_per_boundary(): void
+    {
+        $layout = (new DungeonGenerator)->generate([], [], 987654);
+        $floors = $layout['floors'];
+        sort($floors, SORT_NUMERIC);
+        $connections = $this->verticalConnectionPairs($layout['grid']);
+        $counts = [];
+
+        foreach ($connections as [$from, $to]) {
+            $fromIndex = array_search($from, $floors, true);
+            $toIndex = array_search($to, $floors, true);
+
+            $this->assertIsInt($fromIndex);
+            $this->assertIsInt($toIndex);
+            $this->assertSame(1, abs($fromIndex - $toIndex));
+
+            $boundary = implode(':', [min($fromIndex, $toIndex), max($fromIndex, $toIndex)]);
+            $counts[$boundary] = ($counts[$boundary] ?? 0) + 1;
+        }
+
+        for ($index = 1; $index < count($floors); $index++) {
+            $boundary = implode(':', [$index - 1, $index]);
+            $this->assertGreaterThanOrEqual(1, $counts[$boundary] ?? 0);
+            $this->assertLessThanOrEqual(3, $counts[$boundary] ?? 0);
+        }
     }
 
     public function test_same_seed_produces_the_same_layout(): void
@@ -131,5 +180,36 @@ final class DungeonGeneratorTest extends TestCase
                 $this->assertSame($last['floor'], $grid[$cursorY][$cursorX]['floor'] ?? null);
             }
         }
+    }
+
+    /** @return list<array{int, int}> */
+    private function verticalConnectionPairs(array $grid): array
+    {
+        $connections = [];
+
+        foreach ($grid as $y => $row) {
+            foreach ($row as $x => $cell) {
+                if (($cell['type'] ?? null) !== 'vertical-corridor') {
+                    continue;
+                }
+
+                $direction = $cell['direction'];
+                $previous = $grid[$y - $direction['y']][$x - $direction['x']] ?? null;
+                if (($previous['type'] ?? null) === 'vertical-corridor') {
+                    continue;
+                }
+
+                $cursorX = $x;
+                $cursorY = $y;
+                while (($grid[$cursorY][$cursorX]['type'] ?? null) === 'vertical-corridor') {
+                    $cursorX += $direction['x'];
+                    $cursorY += $direction['y'];
+                }
+
+                $connections[] = [$previous['floor'], $grid[$cursorY][$cursorX]['floor']];
+            }
+        }
+
+        return $connections;
     }
 }

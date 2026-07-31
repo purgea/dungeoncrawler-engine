@@ -7,6 +7,7 @@ use RuntimeException;
 final class DungeonGenerator
 {
     private SeededRandom $random;
+
     /**
      * @return array{
      *     schemaVersion: int,
@@ -28,7 +29,6 @@ final class DungeonGenerator
         $height = max(15, (int) ($data['height'] ?? 63));
         $tileSize = max(1, (int) ($data['tile_size'] ?? 4));
         $wallHeight = max(0.1, (float) ($data['wall_height'] ?? 3.3));
-        $floorElevations = array_values($data['floors'] ?? [0, 10, -10]);
         $roomConfig = $data['rooms'] ?? [];
         $roomCount = max(1, (int) ($roomConfig['count_per_floor'] ?? 8));
         $minRoomWidth = max(3, (int) ($roomConfig['min_width'] ?? 4));
@@ -36,49 +36,69 @@ final class DungeonGenerator
         $minRoomHeight = max(3, (int) ($roomConfig['min_height'] ?? 4));
         $maxRoomHeight = max($minRoomHeight, (int) ($roomConfig['max_height'] ?? 9));
         $placementAttempts = max(1, (int) ($roomConfig['placement_attempts'] ?? 180));
+        $requestedFloorCount = max(1, (int) ($data['floor_count'] ?? 3));
+        $maxFloorCount = max(1, intdiv($width - 2, $minRoomWidth + 3));
+        $floorCount = min($requestedFloorCount, $maxFloorCount);
+        $floorElevations = $this->generateFloorElevations($floorCount);
         $grid = array_fill(0, $height, array_fill(0, $width, null));
-        $regionFloors = $this->shuffled($floorElevations);
-        $regionWidth = (int) floor(($width - 6) / max(1, count($regionFloors)));
-        $floorRegions = [
-            ...array_map(fn (int $floor, int $index): array => [
+        $regionFloors = $floorElevations;
+        sort($regionFloors, SORT_NUMERIC);
+        if ($this->random->int(0, 1) === 1) {
+            $regionFloors = array_reverse($regionFloors);
+        }
+        $availableRegionWidth = $width - 4 - 2 * (count($regionFloors) - 1);
+        $baseRegionWidth = intdiv($availableRegionWidth, count($regionFloors));
+        $extraRegionWidth = $availableRegionWidth % count($regionFloors);
+        $floorRegions = [];
+        $minX = 2;
+        foreach ($regionFloors as $index => $floor) {
+            $regionWidth = $baseRegionWidth + ($index < $extraRegionWidth ? 1 : 0);
+            $floorRegions[] = [
                 'floor' => $floor,
-                'minX' => 2 + $index * ($regionWidth + 2),
-                'maxX' => min($width - 3, 2 + ($index + 1) * $regionWidth),
-            ], $regionFloors, array_keys($regionFloors)),
-        ];
+                'minX' => $minX,
+                'maxX' => $minX + $regionWidth - 1,
+            ];
+            $minX += $regionWidth + 2;
+        }
         $rooms = [];
         $verticalCorridors = [];
 
         for ($index = 1; $index < count($regionFloors); $index++) {
             $fromX = $floorRegions[$index - 1]['maxX'];
             $toX = $floorRegions[$index]['minX'];
-            $connectorY = $this->random->int(3, $height - 4);
-            $gatewayHeight = min(7, $height - 2);
-            $gatewayY = max(1, min($connectorY - intdiv($gatewayHeight, 2), $height - $gatewayHeight - 1));
+            $rampRows = $this->random->shuffle(range(3, $height - 4));
+            $rampCount = $this->random->int(1, 3);
 
-            $fromGateway = [
-                'floor' => $regionFloors[$index - 1],
-                'x' => max($floorRegions[$index - 1]['minX'], $fromX - 4),
-                'y' => $gatewayY,
-                'w' => min(5, $fromX - $floorRegions[$index - 1]['minX'] + 1),
-                'h' => $gatewayHeight,
-                'gateway' => true,
-            ];
-            $toGateway = [
-                'floor' => $regionFloors[$index],
-                'x' => $toX,
-                'y' => $gatewayY,
-                'w' => min(5, $floorRegions[$index]['maxX'] - $toX + 1),
-                'h' => $gatewayHeight,
-                'gateway' => true,
-            ];
+            for ($rampIndex = 0; $rampIndex < $rampCount; $rampIndex++) {
+                $connectorY = $rampRows[$rampIndex];
+                $gatewayHeight = $this->random->int(3, min(7, $height - 2));
+                $gatewayY = max(1, min($connectorY - intdiv($gatewayHeight, 2), $height - $gatewayHeight - 1));
+                $fromGatewayWidth = min(5, $fromX - $floorRegions[$index - 1]['minX'] + 1);
+                $fromGatewayWidth = $this->random->int(min(3, $fromGatewayWidth), $fromGatewayWidth);
+                $toGatewayWidth = min(5, $floorRegions[$index]['maxX'] - $toX + 1);
+                $toGatewayWidth = $this->random->int(min(3, $toGatewayWidth), $toGatewayWidth);
 
-            $rooms[] = $fromGateway;
-            $rooms[] = $toGateway;
-            $verticalCorridors[] = [
-                'from' => ['x' => $fromX, 'y' => $connectorY, 'floor' => $regionFloors[$index - 1]],
-                'to' => ['x' => $toX, 'y' => $connectorY, 'floor' => $regionFloors[$index]],
-            ];
+                $rooms[] = [
+                    'floor' => $regionFloors[$index - 1],
+                    'x' => $fromX - $fromGatewayWidth + 1,
+                    'y' => $gatewayY,
+                    'w' => $fromGatewayWidth,
+                    'h' => $gatewayHeight,
+                    'gateway' => true,
+                ];
+                $rooms[] = [
+                    'floor' => $regionFloors[$index],
+                    'x' => $toX,
+                    'y' => $gatewayY,
+                    'w' => $toGatewayWidth,
+                    'h' => $gatewayHeight,
+                    'gateway' => true,
+                ];
+                $verticalCorridors[] = [
+                    'from' => ['x' => $fromX, 'y' => $connectorY, 'floor' => $regionFloors[$index - 1]],
+                    'to' => ['x' => $toX, 'y' => $connectorY, 'floor' => $regionFloors[$index]],
+                ];
+            }
         }
 
         foreach ($rooms as $room) {
@@ -89,7 +109,7 @@ final class DungeonGenerator
             for ($attempt = 0; $attempt < $placementAttempts && $this->roomCount($rooms, $region['floor']) < $roomCount; $attempt++) {
                 $room = [
                     'floor' => $region['floor'],
-                    'w' => $this->random->int($minRoomWidth, min($maxRoomWidth, $region['maxX'] - $region['minX'] - 1)),
+                    'w' => $this->random->int($minRoomWidth, min($maxRoomWidth, $region['maxX'] - $region['minX'])),
                     'h' => $this->random->int($minRoomHeight, $maxRoomHeight),
                     'x' => $this->random->int($region['minX'], max($region['minX'], $region['maxX'] - $maxRoomWidth)),
                     'y' => $this->random->int(2, $height - $maxRoomHeight - 2),
@@ -156,6 +176,18 @@ final class DungeonGenerator
             'spawn' => $spawn,
             'decorations' => $decorations,
         ];
+    }
+
+    /** @return list<int> */
+    private function generateFloorElevations(int $floorCount): array
+    {
+        $lowestStart = -($floorCount - 1);
+        $start = $this->random->int($lowestStart, 0);
+
+        return array_map(
+            fn (int $offset): int => ($start + $offset) * 10,
+            range(0, $floorCount - 1),
+        );
     }
 
     /** @return array<string, mixed> */
@@ -314,11 +346,5 @@ final class DungeonGenerator
         }
 
         return true;
-    }
-
-    /** @template T @param list<T> $values @return list<T> */
-    private function shuffled(array $values): array
-    {
-        return $this->random->shuffle($values);
     }
 }
