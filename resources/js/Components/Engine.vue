@@ -2,6 +2,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, toRaw } from 'vue';
 import * as pc from 'playcanvas';
 import DungeonRenderer from './DungeonRenderer.vue';
+import Enemy from './Enemy.vue';
 import Loader from './Loader.vue';
 import Minimap from './Minimap.vue';
 import Player from './Player.vue';
@@ -25,18 +26,48 @@ const props = defineProps({
 const viewport = ref(null);
 const app = ref(null);
 const playerComponent = ref(null);
+const enemyComponent = ref(null);
 const dungeonRenderer = ref(null);
 const loaderComponent = ref(null);
 const weaponComponent = ref(null);
 const minimapGrid = ref([]);
 const minimapPlayer = ref(null);
 const minimapRevision = ref(0);
+const playerHealth = ref(100);
 const exploredTiles = new Set();
 
 let collisionGrid = [];
 let currentFloor = 0;
 let resizeObserver = null;
 let leftMouseHeld = false;
+
+function findEnemySpawn(grid, spawn, tileSize, width, height) {
+    const candidates = [];
+    const sameFloorCandidates = [];
+    for (let y = 1; y < height - 1; y += 1) {
+        for (let x = 1; x < width - 1; x += 1) {
+            const cell = grid[y]?.[x];
+            if (!cell?.walkable || cell.floor !== spawn.floor || cell.type !== 'floor') {
+                continue;
+            }
+
+            const distance = Math.hypot(x - spawn.x, y - spawn.y);
+            sameFloorCandidates.push({ x, y, distance });
+            if (distance >= 6 && distance <= 14) {
+                candidates.push({ x, y, distance });
+            }
+        }
+    }
+
+    candidates.sort((a, b) => b.distance - a.distance);
+    sameFloorCandidates.sort((a, b) => b.distance - a.distance);
+    const selected = candidates[0] ?? sameFloorCandidates[0] ?? { x: spawn.x, y: spawn.y, distance: 0 };
+    return {
+        x: (selected.x - width / 2) * tileSize,
+        y: grid[selected.y]?.[selected.x]?.elevation ?? spawn.floor,
+        z: (selected.y - height / 2) * tileSize,
+    };
+}
 
 function nextFrame() {
     return new Promise((resolve) => requestAnimationFrame(resolve));
@@ -186,6 +217,18 @@ async function start() {
             tileSize: dungeon.tileSize,
         },
     );
+    const enemySpawn = findEnemySpawn(grid, spawn, dungeon.tileSize, dungeon.dungeonWidth, dungeon.dungeonHeight);
+    enemyComponent.value.setupEnemy(
+        app.value,
+        playerComponent.value,
+        enemySpawn,
+        {
+            grid: collisionGrid,
+            width: dungeon.dungeonWidth,
+            height: dungeon.dungeonHeight,
+            tileSize: dungeon.tileSize,
+        },
+    );
     await weaponComponent.value.setupWeapon(
         app.value,
         playerComponent.value.getCamera(),
@@ -214,6 +257,7 @@ function cleanup() {
         document.exitPointerLock?.();
     }
     playerComponent.value?.dispose?.();
+    enemyComponent.value?.cleanup?.();
     weaponComponent.value?.cleanup?.();
     app.value?.off('update', updateWorld);
     app.value?.destroy?.();
@@ -247,7 +291,9 @@ defineExpose({
             @move="onPlayerMove"
             @pointer-down="onPlayerPointerDown"
             @pointer-up="onPlayerPointerUp"
+            @health-change="playerHealth = $event"
         />
+        <Enemy ref="enemyComponent" />
         <Weapon ref="weaponComponent" />
         <DungeonRenderer ref="dungeonRenderer" :layout="dungeon" />
         <Minimap
@@ -257,5 +303,8 @@ defineExpose({
             :revision="minimapRevision"
         />
         <Loader ref="loaderComponent" />
+        <div class="pointer-events-none absolute left-5 top-5 rounded bg-black/55 px-3 py-2 text-xs tracking-widest text-[#ece7d8]">
+            HP {{ playerHealth }}
+        </div>
     </div>
 </template>

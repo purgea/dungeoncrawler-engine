@@ -2,7 +2,7 @@
 import { onBeforeUnmount } from 'vue';
 import * as pc from 'playcanvas';
 
-const emit = defineEmits(['lock-change', 'move', 'pointer-down', 'pointer-up']);
+const emit = defineEmits(['lock-change', 'move', 'pointer-down', 'pointer-up', 'health-change']);
 
 const props = defineProps({
     playerRadius: {
@@ -20,6 +20,7 @@ let dungeonWidth = 0;
 let dungeonHeight = 0;
 let tileSize = 0;
 let rampCells = [];
+let health = 100;
 let removeListeners = () => {};
 const keys = new Set();
 
@@ -30,6 +31,7 @@ function setupPlayer(appInstance, canvas, spawnPoint, dungeon) {
     dungeonHeight = dungeon.height;
     tileSize = dungeon.tileSize;
     rampCells = [];
+    health = 100;
     collisionGrid.forEach((row, y) => {
         row.forEach((cell, x) => {
             if (cell?.type === 'vertical-corridor') {
@@ -50,6 +52,16 @@ function setupPlayer(appInstance, canvas, spawnPoint, dungeon) {
     appInstance.on('update', updateMovement);
 
     return { camera, start: spawnPoint };
+}
+
+function takeDamage(amount) {
+    health = Math.max(0, health - Math.max(0, Number(amount) || 0));
+    emit('health-change', health);
+    return health;
+}
+
+function getHealth() {
+    return health;
 }
 
 function setRotation(nextYaw, nextPitch) {
@@ -328,6 +340,7 @@ function dispose() {
     removeListeners();
     keys.clear();
     rampCells = [];
+    health = 100;
     app?.off('update', updateMovement);
     camera?.destroy?.();
     camera = null;
@@ -341,6 +354,8 @@ defineExpose({
     getCamera,
     getRotation,
     isMoving,
+    takeDamage,
+    getHealth,
     dispose,
 });
 </script>
