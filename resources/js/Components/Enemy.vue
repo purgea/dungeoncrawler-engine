@@ -12,6 +12,10 @@ const enemyConfig = {
     moveSpeed: 4.8,
     attackSpeed: 0.85,
     damage: 8,
+    rangedDecisionDistance: 8,
+    projectileSpeed: 18,
+    projectileDamage: 5,
+    projectileCooldown: 1.1,
     radius: 0.48,
     height: 1.65,
 };
@@ -34,6 +38,9 @@ let frameTextures = [];
 let animationTime = 0;
 let animationFrame = 0;
 let attackCooldown = 0;
+let rangedDecisionCooldown = 0;
+let lastRangedDecisionKey = null;
+const projectiles = new Set();
 let stateMachine = null;
 
 function randomBetween(min, max) {
@@ -114,6 +121,15 @@ function createMaterial(texture) {
     material.blendType = pc.BLEND_NORMAL;
     material.depthWrite = false;
     material.cull = pc.CULLFACE_NONE;
+    material.update();
+    return material;
+}
+
+function createProjectileMaterial() {
+    const material = new pc.StandardMaterial();
+    material.diffuse.set(0.45, 0.14, 1);
+    material.emissive.set(0.45, 0.08, 1);
+    material.emissiveIntensity = 3;
     material.update();
     return material;
 }
@@ -265,6 +281,10 @@ function moveTowardPlayer(dt) {
         return;
     }
 
+    if (considerRangedAction(dt)) {
+        return;
+    }
+
     const isFinalWaypoint = pathIndex >= path.length - 1;
     const waypoint = isFinalWaypoint ? target : worldPositionForTile(path[pathIndex]);
     const deltaX = waypoint.x - position.x;
@@ -302,6 +322,95 @@ function moveTowardPlayer(dt) {
     const elevation = surfaceElevation(movedX, movedZ);
     enemy.setPosition(movedX, elevation ?? position.y, movedZ);
     enemy.lookAt(target.x, enemy.getPosition().y, target.z);
+}
+
+function shootProjectile() {
+    const target = playerPosition();
+    const cameraPosition = player?.getCamera?.()?.getLocalPosition?.();
+    const origin = enemy?.getPosition?.()?.clone();
+    if (!target || !origin) {
+        return false;
+    }
+
+    origin.y += 1.05;
+    const direction = new pc.Vec3(
+        target.x - origin.x,
+        (cameraPosition?.y ?? origin.y) - origin.y,
+        target.z - origin.z,
+    ).normalize();
+    const projectile = new pc.Entity('enemy-projectile');
+    projectile.addComponent('render', {
+        type: 'sphere',
+        material: createProjectileMaterial(),
+    });
+    projectile.setPosition(origin);
+    projectile.setLocalScale(0.09, 0.09, 0.09);
+    app.root.addChild(projectile);
+    projectiles.add({ projectile, direction, age: 0 });
+    emit('attack', { damage: enemyConfig.projectileDamage, ranged: true });
+
+    return true;
+}
+
+function updateProjectiles(dt) {
+    for (const active of projectiles) {
+        active.age += dt;
+        const step = active.direction.clone().mulScalar(enemyConfig.projectileSpeed * dt);
+        const next = active.projectile.getPosition().clone().add(step);
+        const target = playerPosition();
+        const hitPlayer = target && Math.hypot(next.x - target.x, next.z - target.z) < 0.55;
+        const hitWall = !cellAtWorldPosition(next.x, next.z).cell?.walkable;
+
+        if (hitPlayer) {
+            player?.takeDamage?.(enemyConfig.projectileDamage);
+            active.projectile.destroy();
+            projectiles.delete(active);
+            continue;
+        }
+
+        if (hitWall || active.age > 3) {
+            active.projectile.destroy();
+            projectiles.delete(active);
+            continue;
+        }
+
+        active.projectile.setPosition(next);
+    }
+}
+
+function considerRangedAction(dt) {
+    rangedDecisionCooldown = Math.max(0, rangedDecisionCooldown - dt);
+    if (rangedDecisionCooldown > 0) {
+        return true;
+    }
+
+    const position = enemy?.getPosition?.();
+    const target = playerPosition();
+    const waypoint = path[pathIndex];
+    if (!position || !target || !waypoint) {
+        return false;
+    }
+
+    const currentTile = cellAtWorldPosition(position.x, position.z);
+    const decisionKey = `${tileKey(currentTile)}>${tileKey(waypoint)}:${pathTargetKey}`;
+    if (decisionKey === lastRangedDecisionKey) {
+        return false;
+    }
+    lastRangedDecisionKey = decisionKey;
+
+    const distance = Math.hypot(target.x - position.x, target.z - position.z);
+    if (distance <= enemyConfig.rangedDecisionDistance || !canSeePlayer()) {
+        return false;
+    }
+
+    if (Math.random() >= 0.2 || !shootProjectile()) {
+        return false;
+    }
+
+    // A shot consumes this grid opportunity. Re-evaluate after the cooldown.
+    lastRangedDecisionKey = null;
+    rangedDecisionCooldown = enemyConfig.projectileCooldown;
+    return true;
 }
 
 function setAnimation(name, dt) {
@@ -387,6 +496,8 @@ function setupEnemy(appInstance, playerComponent, spawnPoint, dungeon) {
     pathIndex = 0;
     pathTargetKey = null;
     pathRepathTimer = 0;
+    rangedDecisionCooldown = 0;
+    lastRangedDecisionKey = null;
     frameTextures = createProceduralFrames().map((canvas, index) => {
         const texture = new pc.Texture(app.graphicsDevice, {
             width: canvas.width,
@@ -434,6 +545,7 @@ function updateEnemy(dt) {
         return;
     }
 
+    updateProjectiles(dt);
     if (stateMachine.state === 'IDLE') {
         attackCooldown = Math.max(0, attackCooldown - dt);
         setAnimation('idle', dt);
@@ -448,6 +560,8 @@ function getState() {
 function cleanup() {
     app?.off('update', updateEnemy);
     enemy?.destroy?.();
+    projectiles.forEach(({ projectile }) => projectile.destroy());
+    projectiles.clear();
     frameTextures.forEach((texture) => texture.destroy?.());
     enemy = null;
     sprite = null;
@@ -459,6 +573,8 @@ function cleanup() {
     pathIndex = 0;
     pathTargetKey = null;
     pathRepathTimer = 0;
+    rangedDecisionCooldown = 0;
+    lastRangedDecisionKey = null;
     app = null;
     player = null;
 }
