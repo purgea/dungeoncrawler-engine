@@ -1,3 +1,5 @@
+import { canTraverseTiles } from './GridCollision';
+
 export class GridPathfinder {
     constructor(grid, width, height) {
         this.grid = grid;
@@ -14,19 +16,7 @@ export class GridPathfinder {
     }
 
     canTraverse(from, to) {
-        if (Math.abs(from.x - to.x) + Math.abs(from.y - to.y) !== 1) {
-            return false;
-        }
-
-        const fromCell = this.cellAt(from);
-        const toCell = this.cellAt(to);
-        if (!fromCell?.walkable || !toCell?.walkable) {
-            return false;
-        }
-
-        return fromCell.floor === toCell.floor ||
-            fromCell.type === 'vertical-corridor' ||
-            toCell.type === 'vertical-corridor';
+        return canTraverseTiles(this.grid, from, to);
     }
 
     neighbors(tile) {

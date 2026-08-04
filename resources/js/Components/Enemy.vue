@@ -2,6 +2,13 @@
 import { onBeforeUnmount } from 'vue';
 import * as pc from 'playcanvas';
 import { FiniteStateMachine } from '../ai/FiniteStateMachine';
+import {
+    canTraverseTiles,
+    getRampCells,
+    isWalkableWorldPosition,
+    surfaceElevation as getSurfaceElevation,
+    tileAtWorldPosition,
+} from '../ai/GridCollision';
 import { GridPathfinder } from '../ai/GridPathfinder';
 
 const emit = defineEmits(['state-change', 'attack']);
@@ -23,6 +30,7 @@ const enemyConfig = {
 let app = null;
 let player = null;
 let collisionGrid = [];
+let rampCells = [];
 let dungeonWidth = 0;
 let dungeonHeight = 0;
 let tileSize = 1;
@@ -135,56 +143,23 @@ function createProjectileMaterial() {
 }
 
 function cellAtWorldPosition(x, z) {
-    const tileX = Math.floor(x / tileSize + dungeonWidth / 2 + 0.5);
-    const tileY = Math.floor(z / tileSize + dungeonHeight / 2 + 0.5);
-    return {
-        x: tileX,
-        y: tileY,
-        cell: collisionGrid[tileY]?.[tileX],
-    };
-}
-
-function surfaceElevation(x, z) {
-    const tile = cellAtWorldPosition(x, z);
-    const cell = tile.cell;
-    if (!cell?.walkable) {
-        return null;
-    }
-
-    if (cell.type !== 'vertical-corridor') {
-        return cell.elevation;
-    }
-
-    const centerX = (tile.x - dungeonWidth / 2) * tileSize;
-    const centerZ = (tile.y - dungeonHeight / 2) * tileSize;
-    const alongSlope = (x - centerX) * cell.direction.x + (z - centerZ) * cell.direction.y;
-    return cell.elevation + Math.tan(cell.slope * pc.math.DEG_TO_RAD) * alongSlope;
+    return tileAtWorldPosition(x, z, collisionGrid, dungeonWidth, dungeonHeight, tileSize);
 }
 
 function isWalkable(x, z, fromPosition) {
-    const samples = [
-        { x, z },
-        { x: x - enemyConfig.radius, z: z - enemyConfig.radius },
-        { x: x + enemyConfig.radius, z: z - enemyConfig.radius },
-        { x: x - enemyConfig.radius, z: z + enemyConfig.radius },
-        { x: x + enemyConfig.radius, z: z + enemyConfig.radius },
-    ];
     const fromTile = fromPosition ? cellAtWorldPosition(fromPosition.x, fromPosition.z) : null;
 
-    return samples.every((sample) => {
-        const tile = cellAtWorldPosition(sample.x, sample.z);
-        const cell = tile.cell;
-        if (!cell?.walkable) {
-            return false;
-        }
-
-        if (!fromTile?.cell) {
-            return true;
-        }
-
-        return cell.floor === fromTile.cell.floor ||
-            cell.type === 'vertical-corridor' ||
-            fromTile.cell.type === 'vertical-corridor';
+    return isWalkableWorldPosition({
+        x,
+        z,
+        grid: collisionGrid,
+        width: dungeonWidth,
+        height: dungeonHeight,
+        tileSize,
+        radius: enemyConfig.radius,
+        ramps: rampCells,
+        fromTile,
+        fromPosition,
     });
 }
 
@@ -195,27 +170,31 @@ function hasLineOfSight(from, to) {
     }
 
     const samples = Math.max(2, Math.ceil(distance / Math.max(tileSize * 0.35, 0.5)));
-    const fromTile = cellAtWorldPosition(from.x, from.z).cell;
-    const toTile = cellAtWorldPosition(to.x, to.z).cell;
-    if (!fromTile?.walkable || !toTile?.walkable) {
-        return false;
-    }
-    if (fromTile.floor !== toTile.floor && fromTile.type !== 'vertical-corridor' && toTile.type !== 'vertical-corridor') {
+    const fromTile = cellAtWorldPosition(from.x, from.z);
+    const toTile = cellAtWorldPosition(to.x, to.z);
+    if (!fromTile.cell?.walkable || !toTile.cell?.walkable) {
         return false;
     }
 
+    let previousTile = fromTile;
     for (let index = 1; index < samples; index += 1) {
         const progress = index / samples;
-        const cell = cellAtWorldPosition(
+        const tile = cellAtWorldPosition(
             from.x + (to.x - from.x) * progress,
             from.z + (to.z - from.z) * progress,
-        ).cell;
-        if (!cell?.walkable) {
+        );
+        if (!tile.cell?.walkable) {
             return false;
         }
+        if ((tile.x !== previousTile.x || tile.y !== previousTile.y) &&
+            !canTraverseTiles(collisionGrid, previousTile, tile)) {
+            return false;
+        }
+        previousTile = tile;
     }
 
-    return true;
+    return (toTile.x === previousTile.x && toTile.y === previousTile.y) ||
+        canTraverseTiles(collisionGrid, previousTile, toTile);
 }
 
 function playerPosition() {
@@ -319,7 +298,14 @@ function moveTowardPlayer(dt) {
         pathIndex += 1;
     }
 
-    const elevation = surfaceElevation(movedX, movedZ);
+    const elevation = getSurfaceElevation(
+        movedX,
+        movedZ,
+        collisionGrid,
+        dungeonWidth,
+        dungeonHeight,
+        tileSize,
+    );
     enemy.setPosition(movedX, elevation ?? position.y, movedZ);
     enemy.lookAt(target.x, enemy.getPosition().y, target.z);
 }
@@ -356,10 +342,15 @@ function updateProjectiles(dt) {
     for (const active of projectiles) {
         active.age += dt;
         const step = active.direction.clone().mulScalar(enemyConfig.projectileSpeed * dt);
-        const next = active.projectile.getPosition().clone().add(step);
+        const previous = active.projectile.getPosition().clone();
+        const next = previous.clone().add(step);
         const target = playerPosition();
         const hitPlayer = target && Math.hypot(next.x - target.x, next.z - target.z) < 0.55;
-        const hitWall = !cellAtWorldPosition(next.x, next.z).cell?.walkable;
+        const previousTile = cellAtWorldPosition(previous.x, previous.z);
+        const nextTile = cellAtWorldPosition(next.x, next.z);
+        const crossedWall = (previousTile.x !== nextTile.x || previousTile.y !== nextTile.y) &&
+            !canTraverseTiles(collisionGrid, previousTile, nextTile);
+        const hitWall = !nextTile.cell?.walkable || crossedWall;
 
         if (hitPlayer) {
             player?.takeDamage?.(enemyConfig.projectileDamage);
@@ -488,6 +479,7 @@ function setupEnemy(appInstance, playerComponent, spawnPoint, dungeon) {
     app = appInstance;
     player = playerComponent;
     collisionGrid = dungeon.grid;
+    rampCells = getRampCells(collisionGrid);
     dungeonWidth = dungeon.width;
     dungeonHeight = dungeon.height;
     tileSize = dungeon.tileSize;
@@ -567,6 +559,8 @@ function cleanup() {
     sprite = null;
     spriteMaterials = [];
     frameTextures = [];
+    collisionGrid = [];
+    rampCells = [];
     stateMachine = null;
     pathfinder = null;
     path = [];
