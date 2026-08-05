@@ -16,15 +16,17 @@ final class DungeonGenerator
      *     tileSize: int,
      *     wallHeight: float,
      *     floors: list<int>,
+     *     lighting: array<string, mixed>,
      *     grid: array<int, array<int, array<string, mixed>|null>>,
      *     startRoom: array<string, int|bool>,
      *     spawn: array<string, int>
      *     decorations: list<array{asset: array<string, mixed>, floor: int, x: int, y: int}>
      * }
      */
-    public function generate(array $decorationAssets = [], array $data = [], int $seed = 1): array
+    public function generate(array $decorationAssets = [], array $data = [], int $seed = 1, array $lighting = []): array
     {
         $this->random = new SeededRandom($seed);
+        $lighting = $this->resolveLighting($lighting !== [] ? $lighting : ($data['lighting'] ?? []));
         $width = max(15, (int) ($data['width'] ?? 63));
         $height = max(15, (int) ($data['height'] ?? 63));
         $tileSize = max(1, (int) ($data['tile_size'] ?? 4));
@@ -171,11 +173,98 @@ final class DungeonGenerator
             'tileSize' => $tileSize,
             'wallHeight' => $wallHeight,
             'floors' => $floorElevations,
+            'lighting' => $lighting,
             'grid' => $grid,
             'startRoom' => $startRoom,
             'spawn' => $spawn,
             'decorations' => $decorations,
         ];
+    }
+
+    /** @return array<string, mixed> */
+    private function resolveLighting(array $lighting): array
+    {
+        return array_replace_recursive([
+            'scene' => [
+                'ambient' => [0.24, 0.28, 0.36],
+                'exposure' => 1.1,
+                'fog' => [
+                    'type' => 'linear',
+                    'color' => [0.025, 0.032, 0.045],
+                    'density' => 0,
+                    'start' => 32,
+                    'end' => 150,
+                ],
+            ],
+            'camera' => [
+                'clear_color' => [0.025, 0.032, 0.045],
+                'tone_mapping' => 'neutral',
+            ],
+            'player' => [
+                'light' => [
+                    'color' => [0.58, 0.68, 0.92],
+                    'intensity' => 0.55,
+                    'range_tiles' => 1.65,
+                    'falloff' => 'inverse_squared',
+                    'cast_shadows' => false,
+                    'position' => [0, -0.35, 0],
+                ],
+            ],
+            'torch' => [
+                'light' => [
+                    'color' => [1, 0.3, 0.06],
+                    'intensity' => 1.45,
+                    'range_tiles' => 1.05,
+                    'falloff' => 'inverse_squared',
+                    'cast_shadows' => false,
+                ],
+                'flicker' => [
+                    'enabled' => true,
+                    'base' => 0.94,
+                    'frequency_a' => 8.1,
+                    'amplitude_a' => 0.035,
+                    'frequency_b' => 13.7,
+                    'amplitude_b' => 0.025,
+                ],
+            ],
+            'enemy' => [
+                'light' => [
+                    'color' => [0.35, 0.05, 0.2],
+                    'intensity' => 0.8,
+                    'range_tiles' => 1,
+                    'falloff' => 'linear',
+                    'cast_shadows' => false,
+                ],
+            ],
+            'materials' => [
+                'dungeon' => ['ambient' => [0.4, 0.42, 0.46]],
+                'door' => [
+                    'ambient' => [0.34, 0.28, 0.17],
+                    'emissive' => [0.1, 0.06, 0.025],
+                ],
+                'recess' => ['ambient' => [0.16, 0.14, 0.12]],
+                'arch' => ['ambient' => [0.44, 0.44, 0.42]],
+                'torch_wood' => ['ambient' => [0.08, 0.035, 0.015]],
+                'torch_metal' => [
+                    'metalness' => 0.65,
+                    'shininess' => 70,
+                ],
+                'torch_flame' => [
+                    'emissive' => [1, 0.18, 0.015],
+                    'emissive_intensity' => 4,
+                ],
+                'enemy' => [
+                    'emissive' => [0.18, 0.08, 0.12],
+                    'emissive_intensity' => 0.8,
+                    'sprite_shadow_alpha' => 0.55,
+                    'sprite_shadow_blur' => 13,
+                ],
+                'projectile' => [
+                    'emissive' => [0.45, 0.08, 1],
+                    'emissive_intensity' => 3,
+                ],
+            ],
+        ], $lighting);
     }
 
     /** @return list<int> */

@@ -7,6 +7,7 @@ import Loader from './Loader.vue';
 import Minimap from './Minimap.vue';
 import Player from './Player.vue';
 import Weapon from './Weapon.vue';
+import { colorFromRgb, fogTypeFromName } from '../lighting';
 
 const emit = defineEmits(['lock-change']);
 const props = defineProps({
@@ -152,10 +153,11 @@ function onPlayerMove(movement) {
     revealAroundPlayer();
 }
 
-function updateWorld() {
+function updateWorld(dt) {
     const camera = playerComponent.value?.getCamera?.();
     const rotation = playerComponent.value?.getRotation?.();
     dungeonRenderer.value?.updateDecorations?.(rotation?.yaw ?? camera?.getEulerAngles?.().y ?? 0);
+    dungeonRenderer.value?.updateLighting?.(dt);
     weaponComponent.value?.setMoving?.(playerComponent.value?.isMoving?.() ?? false);
 
     if (leftMouseHeld && camera) {
@@ -184,14 +186,22 @@ async function start() {
 
     resizeObserver = new ResizeObserver(resizeCanvasToViewport);
     resizeObserver.observe(viewport.value);
-    // Keep the dungeon readable, but let local light sources define the scene.
-    app.value.scene.ambientLight = new pc.Color(0.15, 0.135, 0.115);
+    const layout = toRaw(props.dungeon);
+    const lighting = layout.lighting;
+    // Keep the global fill low enough for local lights to matter, while still
+    // lifting unlit surfaces above pure black so the player can read the room.
+    app.value.scene.ambientLight = colorFromRgb(lighting.scene.ambient);
+    app.value.scene.exposure = lighting.scene.exposure;
+    app.value.scene.fog.type = fogTypeFromName(lighting.scene.fog.type);
+    app.value.scene.fog.color = colorFromRgb(lighting.scene.fog.color);
+    app.value.scene.fog.density = lighting.scene.fog.density;
+    app.value.scene.fog.start = lighting.scene.fog.start;
+    app.value.scene.fog.end = lighting.scene.fog.end;
 
     loaderComponent.value.setMessage('Reading dungeon layout...');
     await nextFrame();
 
     const dungeon = dungeonRenderer.value;
-    const layout = toRaw(props.dungeon);
     const { grid, spawn, decorations = [] } = layout;
     const texture = dungeon.createDungeonTexture(app.value);
     const material = dungeon.createMaterial(texture);
@@ -215,6 +225,7 @@ async function start() {
             width: dungeon.dungeonWidth,
             height: dungeon.dungeonHeight,
             tileSize: dungeon.tileSize,
+            lighting,
         },
     );
     const enemySpawn = findEnemySpawn(grid, spawn, dungeon.tileSize, dungeon.dungeonWidth, dungeon.dungeonHeight);
@@ -227,12 +238,14 @@ async function start() {
             width: dungeon.dungeonWidth,
             height: dungeon.dungeonHeight,
             tileSize: dungeon.tileSize,
+            lighting,
         },
     );
     await weaponComponent.value.setupWeapon(
         app.value,
         playerComponent.value.getCamera(),
         toRaw(props.weaponAssets),
+        lighting,
     );
     weaponComponent.value.setCollisionGrid(
         collisionGrid,

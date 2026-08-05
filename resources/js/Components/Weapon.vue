@@ -3,6 +3,7 @@ import * as pc from 'playcanvas';
 
 let app = null;
 let weapon = null;
+let lighting = null;
 let bobTime = 0;
 let basePosition = null;
 let moving = false;
@@ -20,12 +21,13 @@ function loadTexture(appInstance, url) {
     });
 }
 
-async function setupWeapon(appInstance, camera, weaponAssets) {
+async function setupWeapon(appInstance, camera, weaponAssets, lightingConfig) {
     if (!weaponAssets?.length) {
         return;
     }
 
     app = appInstance;
+    lighting = lightingConfig;
     const texture = await loadTexture(app, weaponAssets[0].path_url);
     texture.addressU = pc.ADDRESS_CLAMP_TO_EDGE;
     texture.addressV = pc.ADDRESS_CLAMP_TO_EDGE;
@@ -78,7 +80,7 @@ function makeMaterial(color, emissive = color) {
     const material = new pc.StandardMaterial();
     material.diffuse.set(color[0], color[1], color[2]);
     material.emissive.set(emissive[0], emissive[1], emissive[2]);
-    material.emissiveIntensity = 3;
+    material.emissiveIntensity = lighting.materials.projectile.emissive_intensity;
     material.update();
     return material;
 }
@@ -160,6 +162,7 @@ function cleanup() {
     projectiles.forEach((projectile) => projectile.destroy());
     projectiles.clear();
     weapon = null;
+    lighting = null;
 }
 
 defineExpose({ setupWeapon, cleanup, setMoving, fire, setCollisionGrid });

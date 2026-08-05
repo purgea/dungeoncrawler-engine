@@ -74,6 +74,19 @@ final class DungeonGeneratorTest extends TestCase
         $this->assertCount(31, $layout['grid']);
     }
 
+    public function test_it_embeds_stage_lighting_configuration_in_the_layout(): void
+    {
+        $layout = (new DungeonGenerator)->generate([], [], 123456, [
+            'scene' => ['exposure' => 1.35],
+            'torch' => ['light' => ['range_tiles' => 0.9]],
+        ]);
+
+        $this->assertSame(1.35, $layout['lighting']['scene']['exposure']);
+        $this->assertSame(0.9, $layout['lighting']['torch']['light']['range_tiles']);
+        $this->assertSame([0.24, 0.28, 0.36], $layout['lighting']['scene']['ambient']);
+        $this->assertSame('neutral', $layout['lighting']['camera']['tone_mapping']);
+    }
+
     public function test_floor_count_generates_a_seeded_bounded_floor_sequence(): void
     {
         $generator = new DungeonGenerator;

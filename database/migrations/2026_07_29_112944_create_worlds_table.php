@@ -18,7 +18,6 @@ return new class extends Migration
             $table->string('description')->nullable();
             $table->string('image')->nullable();
             $table->string('background')->nullable();
-            $table->string('music')->nullable();
             $table->timestamps();
         });
     }

@@ -26,7 +26,12 @@ class DungeonController extends Controller
         }
 
         return Inertia::render('Game', [
-            'dungeon' => $generator->generate($decorationAssets->toArray(), $level->data ?? [], (int) $seed),
+            'dungeon' => $generator->generate(
+                $decorationAssets->toArray(),
+                $level->data ?? [],
+                (int) $seed,
+                $stage->lighting ?? [],
+            ),
             'musicAssets' => $musicAssets,
             'decorationAssets' => $decorationAssets,
             'weaponAssets' => $weaponAssets,

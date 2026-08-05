@@ -1,5 +1,6 @@
 <script setup>
 import * as pc from 'playcanvas';
+import { colorFromRgb, falloffModeFromName } from '../lighting';
 
 const props = defineProps({
     layout: {
@@ -13,7 +14,10 @@ const dungeonHeight = props.layout.height;
 const floorElevations = props.layout.floors;
 const tileSize = props.layout.tileSize;
 const wallHeight = props.layout.wallHeight;
+const lighting = props.layout.lighting;
 const decorationEntities = [];
+const torchLights = [];
+let lightingTime = 0;
 
 function randomInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -114,7 +118,7 @@ function createMaterial(texture) {
     material.diffuseMap = texture;
     material.diffuseMapTiling.set(1, 1);
     material.diffuse.set(0.95, 0.92, 0.82);
-    material.ambient.set(0.24, 0.22, 0.19);
+    material.ambient.set(...lighting.materials.dungeon.ambient);
     material.update();
 
     return material;
@@ -125,8 +129,8 @@ function createDoorMaterial(texture) {
     material.diffuseMap = texture;
     material.diffuseMapTiling.set(1, 1);
     material.diffuse.set(0.62, 0.49, 0.24);
-    material.ambient.set(0.26, 0.2, 0.12);
-    material.emissive.set(0.08, 0.05, 0.02);
+    material.ambient.set(...lighting.materials.door.ambient);
+    material.emissive.set(...lighting.materials.door.emissive);
     material.update();
 
     return material;
@@ -137,7 +141,7 @@ function createRecessMaterial(texture) {
     material.diffuseMap = texture;
     material.diffuseMapTiling.set(1, 1);
     material.diffuse.set(0.16, 0.12, 0.08);
-    material.ambient.set(0.08, 0.06, 0.04);
+    material.ambient.set(...lighting.materials.recess.ambient);
     material.update();
 
     return material;
@@ -148,7 +152,7 @@ function createArchMaterial(texture) {
     material.diffuseMap = texture;
     material.diffuseMapTiling.set(1, 1);
     material.diffuse.set(0.58, 0.54, 0.48);
-    material.ambient.set(0.28, 0.25, 0.22);
+    material.ambient.set(...lighting.materials.arch.ambient);
     material.update();
 
     return material;
@@ -173,19 +177,19 @@ function addBox(appInstance, name, position, scale, material, rotation = null) {
 function createTorchMaterials() {
     const metal = new pc.StandardMaterial();
     metal.diffuse.set(0.12, 0.09, 0.06);
-    metal.metalness = 0.65;
-    metal.shininess = 70;
+    metal.metalness = lighting.materials.torch_metal.metalness;
+    metal.shininess = lighting.materials.torch_metal.shininess;
     metal.update();
 
     const wood = new pc.StandardMaterial();
     wood.diffuse.set(0.2, 0.09, 0.035);
-    wood.ambient.set(0.08, 0.035, 0.015);
+    wood.ambient.set(...lighting.materials.torch_wood.ambient);
     wood.update();
 
     const flame = new pc.StandardMaterial();
     flame.diffuse.set(1, 0.3, 0.025);
-    flame.emissive.set(1, 0.18, 0.015);
-    flame.emissiveIntensity = 4;
+    flame.emissive.set(...lighting.materials.torch_flame.emissive);
+    flame.emissiveIntensity = lighting.materials.torch_flame.emissive_intensity;
     flame.update();
 
     return { metal, wood, flame };
@@ -214,16 +218,40 @@ function addTorch(appInstance, position, edge, materials) {
     torch.addChild(flame);
 
     const light = new pc.Entity('torch-light');
+    const torchLightConfig = lighting.torch.light;
     light.addComponent('light', {
         type: 'omni',
-        color: new pc.Color(1, 0.34, 0.075),
-        intensity: 2.15,
-        range: 10,
-        castShadows: false,
+        color: colorFromRgb(torchLightConfig.color),
+        intensity: torchLightConfig.intensity,
+        // A torch should warm its own cell, not wash out the whole corridor.
+        range: Math.max(tileSize * torchLightConfig.range_tiles, 1),
+        falloffMode: falloffModeFromName(torchLightConfig.falloff),
+        castShadows: torchLightConfig.cast_shadows,
     });
     light.setLocalPosition(-edge.dx * 0.72, 0.75, -edge.dy * 0.72);
     torch.addChild(light);
+    torchLights.push({
+        light: light.light,
+        baseIntensity: torchLightConfig.intensity,
+        phase: Math.random() * Math.PI * 2,
+    });
     appInstance.root.addChild(torch);
+}
+
+function updateLighting(dt = 0) {
+    lightingTime += dt;
+    const flickerConfig = lighting.torch.flicker;
+    torchLights.forEach(({ light, baseIntensity, phase }) => {
+        if (!flickerConfig.enabled) {
+            light.intensity = baseIntensity;
+            return;
+        }
+
+        const flicker = flickerConfig.base
+            + Math.sin(lightingTime * flickerConfig.frequency_a + phase) * flickerConfig.amplitude_a
+            + Math.sin(lightingTime * flickerConfig.frequency_b + phase * 1.7) * flickerConfig.amplitude_b;
+        light.intensity = baseIntensity * flicker;
+    });
 }
 
 function loadTexture(appInstance, url) {
@@ -285,6 +313,8 @@ async function buildDungeon(appInstance, grid, material, decorations = []) {
     const floorThickness = 0.16;
     const wallThickness = 0.28;
     const torchMaterials = createTorchMaterials();
+    torchLights.length = 0;
+    lightingTime = 0;
     const torchTiles = new Map(floorElevations.map((floor) => [floor, []]));
     const torchCounts = new Map(floorElevations.map((floor) => [floor, 0]));
     const verticalCorridors = [];
@@ -485,6 +515,7 @@ defineExpose({
     createRecessMaterial,
     createArchMaterial,
     buildDungeon,
+    updateLighting,
     updateDecorations,
     worldPosition,
 });

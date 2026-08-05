@@ -8,6 +8,10 @@ class WorldStage extends Model
 {
     protected $guarded = [];
 
+    protected $casts = [
+        'lighting' => 'array',
+    ];
+
     public function world()
     {
         return $this->belongsTo(World::class);

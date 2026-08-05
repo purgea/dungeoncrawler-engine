@@ -10,6 +10,7 @@ import {
     tileAtWorldPosition,
 } from '../ai/GridCollision';
 import { GridPathfinder } from '../ai/GridPathfinder';
+import { colorFromRgb, falloffModeFromName } from '../lighting';
 
 const emit = defineEmits(['state-change', 'attack']);
 
@@ -29,6 +30,7 @@ const enemyConfig = {
 
 let app = null;
 let player = null;
+let lighting = null;
 let collisionGrid = [];
 let rampCells = [];
 let dungeonWidth = 0;
@@ -68,8 +70,8 @@ function createFrameCanvas(frame, hue) {
     ctx.translate(64, 72 + bob);
     ctx.scale(1, squash);
 
-    ctx.shadowColor = `hsla(${hue}, 100%, 60%, 0.55)`;
-    ctx.shadowBlur = 13;
+    ctx.shadowColor = `hsla(${hue}, 100%, 60%, ${lighting.materials.enemy.sprite_shadow_alpha})`;
+    ctx.shadowBlur = lighting.materials.enemy.sprite_shadow_blur;
     ctx.fillStyle = `hsl(${hue} 62% 42%)`;
     ctx.beginPath();
     ctx.moveTo(-31, 36);
@@ -123,8 +125,8 @@ function createMaterial(texture) {
     material.opacityMap = texture;
     material.opacityMapChannel = 'a';
     material.diffuse.set(1, 1, 1);
-    material.emissive.set(0.18, 0.08, 0.12);
-    material.emissiveIntensity = 0.8;
+    material.emissive.set(...lighting.materials.enemy.emissive);
+    material.emissiveIntensity = lighting.materials.enemy.emissive_intensity;
     material.alphaTest = 0.05;
     material.blendType = pc.BLEND_NORMAL;
     material.depthWrite = false;
@@ -136,8 +138,8 @@ function createMaterial(texture) {
 function createProjectileMaterial() {
     const material = new pc.StandardMaterial();
     material.diffuse.set(0.45, 0.14, 1);
-    material.emissive.set(0.45, 0.08, 1);
-    material.emissiveIntensity = 3;
+    material.emissive.set(...lighting.materials.projectile.emissive);
+    material.emissiveIntensity = lighting.materials.projectile.emissive_intensity;
     material.update();
     return material;
 }
@@ -483,6 +485,7 @@ function setupEnemy(appInstance, playerComponent, spawnPoint, dungeon) {
     dungeonWidth = dungeon.width;
     dungeonHeight = dungeon.height;
     tileSize = dungeon.tileSize;
+    lighting = dungeon.lighting;
     pathfinder = new GridPathfinder(collisionGrid, dungeonWidth, dungeonHeight);
     path = [];
     pathIndex = 0;
@@ -517,12 +520,14 @@ function setupEnemy(appInstance, playerComponent, spawnPoint, dungeon) {
     enemy.addChild(sprite);
 
     const light = new pc.Entity('procedural-enemy-light');
+    const enemyLightConfig = lighting.enemy.light;
     light.addComponent('light', {
         type: 'omni',
-        color: new pc.Color(0.35, 0.05, 0.2),
-        intensity: 0.8,
-        range: 4,
-        castShadows: false,
+        color: colorFromRgb(enemyLightConfig.color),
+        intensity: enemyLightConfig.intensity,
+        range: Math.max(tileSize * enemyLightConfig.range_tiles, 1),
+        falloffMode: falloffModeFromName(enemyLightConfig.falloff),
+        castShadows: enemyLightConfig.cast_shadows,
     });
     light.setLocalPosition(0, 1.05, 0);
     enemy.addChild(light);
@@ -571,6 +576,7 @@ function cleanup() {
     lastRangedDecisionKey = null;
     app = null;
     player = null;
+    lighting = null;
 }
 
 onBeforeUnmount(cleanup);

@@ -7,6 +7,7 @@ import {
     surfaceElevation,
     tileAtWorldPosition,
 } from '../ai/GridCollision';
+import { colorFromRgb, falloffModeFromName, toneMappingFromName } from '../lighting';
 
 const emit = defineEmits(['lock-change', 'move', 'pointer-down', 'pointer-up', 'health-change']);
 
@@ -18,7 +19,9 @@ const props = defineProps({
 });
 
 let camera = null;
+let playerLight = null;
 let app = null;
+let lighting = null;
 let yaw = 0;
 let pitch = 0;
 let collisionGrid = [];
@@ -36,15 +39,30 @@ function setupPlayer(appInstance, canvas, spawnPoint, dungeon) {
     dungeonWidth = dungeon.width;
     dungeonHeight = dungeon.height;
     tileSize = dungeon.tileSize;
+    lighting = dungeon.lighting;
     rampCells = getRampCells(collisionGrid);
     health = 100;
     camera = new pc.Entity('player-camera');
+    const cameraLighting = lighting.camera;
     camera.addComponent('camera', {
-        clearColor: new pc.Color(0.02, 0.025, 0.02),
+        clearColor: colorFromRgb(cameraLighting.clear_color),
         fov: 72,
         nearClip: 0.05,
         farClip: 500,
+        toneMapping: toneMappingFromName(cameraLighting.tone_mapping),
     });
+    const playerLightConfig = lighting.player.light;
+    playerLight = new pc.Entity('player-visibility-light');
+    playerLight.addComponent('light', {
+        type: 'omni',
+        color: colorFromRgb(playerLightConfig.color),
+        intensity: playerLightConfig.intensity,
+        range: Math.max(tileSize * playerLightConfig.range_tiles, 1),
+        falloffMode: falloffModeFromName(playerLightConfig.falloff),
+        castShadows: playerLightConfig.cast_shadows,
+    });
+    playerLight.setLocalPosition(...playerLightConfig.position);
+    camera.addChild(playerLight);
     camera.setLocalPosition(spawnPoint.x, spawnPoint.y, spawnPoint.z);
     appInstance.root.addChild(camera);
     installInput(canvas);
@@ -233,9 +251,11 @@ function dispose() {
     removeListeners();
     keys.clear();
     rampCells = [];
+    lighting = null;
     health = 100;
     app?.off('update', updateMovement);
     camera?.destroy?.();
+    playerLight = null;
     camera = null;
     app = null;
 }
