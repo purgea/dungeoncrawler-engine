@@ -1,6 +1,7 @@
 <script setup>
 import * as pc from 'playcanvas';
 import { colorFromRgb, falloffModeFromName } from '../lighting';
+import wallTextureUrl from '../../../extras/image.png';
 
 const props = defineProps({
     layout: {
@@ -19,9 +20,10 @@ const decorationEntities = [];
 const torchLights = [];
 let lightingTime = 0;
 
-function randomInt(min, max) {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-}
+const DUNGEON_TEXTURE_HUE = 38;
+const DUNGEON_TEXTURE_BASE_LIGHTNESS = 36;
+const DUNGEON_TEXTURE_LIGHTNESS = 42;
+const TORCH_LIGHT_RANGE_SCALE = 0.9;
 
 function worldPosition(x, y, floor = 0) {
     return {
@@ -36,15 +38,14 @@ function createDungeonTexture(appInstance) {
     canvas.width = 128;
     canvas.height = 128;
     const ctx = canvas.getContext('2d');
-    const baseHue = randomInt(20, 210);
+    const baseHue = DUNGEON_TEXTURE_HUE;
 
-    ctx.fillStyle = `hsl(${baseHue} 20% 36%)`;
+    ctx.fillStyle = `hsl(${baseHue} 20% ${DUNGEON_TEXTURE_BASE_LIGHTNESS}%)`;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     for (let y = 0; y < canvas.height; y += 8) {
         for (let x = 0; x < canvas.width; x += 8) {
-            const lightness = randomInt(28, 54);
-            ctx.fillStyle = `hsl(${baseHue + randomInt(-10, 10)} 18% ${lightness}%)`;
+            ctx.fillStyle = `hsl(${baseHue} 18% ${DUNGEON_TEXTURE_LIGHTNESS}%)`;
             ctx.fillRect(x, y, 8, 8);
         }
     }
@@ -118,6 +119,17 @@ function createMaterial(texture) {
     material.diffuseMap = texture;
     material.diffuseMapTiling.set(1, 1);
     material.diffuse.set(0.95, 0.92, 0.82);
+    material.ambient.set(...lighting.materials.dungeon.ambient);
+    material.update();
+
+    return material;
+}
+
+function createStoneMaterial(texture) {
+    const material = new pc.StandardMaterial();
+    material.diffuseMap = texture;
+    material.diffuseMapTiling.set(1, 1);
+    material.diffuse.set(0.92, 0.92, 0.92);
     material.ambient.set(...lighting.materials.dungeon.ambient);
     material.update();
 
@@ -224,7 +236,7 @@ function addTorch(appInstance, position, edge, materials) {
         color: colorFromRgb(torchLightConfig.color),
         intensity: torchLightConfig.intensity,
         // A torch should warm its own cell, not wash out the whole corridor.
-        range: Math.max(tileSize * torchLightConfig.range_tiles, 1),
+        range: Math.max(tileSize * torchLightConfig.range_tiles * TORCH_LIGHT_RANGE_SCALE, 1),
         falloffMode: falloffModeFromName(torchLightConfig.falloff),
         castShadows: torchLightConfig.cast_shadows,
     });
@@ -256,7 +268,7 @@ function updateLighting(dt = 0) {
 
 function loadTexture(appInstance, url) {
     return new Promise((resolve, reject) => {
-        const asset = new pc.Asset(`decoration-${url}`, 'texture', { url });
+        const asset = new pc.Asset(`texture-${url}`, 'texture', { url });
         asset.once('load', () => {
             const texture = asset.resource;
             texture.addressU = pc.ADDRESS_CLAMP_TO_EDGE;
@@ -265,10 +277,15 @@ function loadTexture(appInstance, url) {
             texture.magFilter = pc.FILTER_LINEAR;
             resolve({ texture, width: texture.width, height: texture.height });
         });
-        asset.once('error', () => reject(new Error(`Unable to load decoration asset: ${url}`)));
+        asset.once('error', () => reject(new Error(`Unable to load texture asset: ${url}`)));
         appInstance.assets.add(asset);
         appInstance.assets.load(asset);
     });
+}
+
+async function loadStoneMaterial(appInstance) {
+    const image = await loadTexture(appInstance, wallTextureUrl);
+    return createStoneMaterial(image.texture);
 }
 
 async function addDecoration(appInstance, decoration) {
@@ -309,7 +326,7 @@ function updateDecorations(cameraYaw) {
     });
 }
 
-async function buildDungeon(appInstance, grid, material, decorations = []) {
+async function buildDungeon(appInstance, grid, material, stoneMaterial, decorations = []) {
     const floorThickness = 0.16;
     const wallThickness = 0.28;
     const torchMaterials = createTorchMaterials();
@@ -377,7 +394,7 @@ async function buildDungeon(appInstance, grid, material, decorations = []) {
             'vertical-corridor-floor',
             { x: center.x, y: center.y - Math.cos(slopeRadians) * floorThickness / 2, z: center.z },
             corridorScale,
-            material,
+            stoneMaterial,
             rotation,
         );
         addBox(
@@ -385,7 +402,7 @@ async function buildDungeon(appInstance, grid, material, decorations = []) {
             'vertical-corridor-ceiling',
             { x: center.x, y: center.y + wallHeight + Math.cos(slopeRadians) * floorThickness / 2, z: center.z },
             corridorScale,
-            material,
+            stoneMaterial,
             rotation,
         );
 
@@ -411,7 +428,7 @@ async function buildDungeon(appInstance, grid, material, decorations = []) {
                         y: sectionHeight,
                         z: direction.y ? tileSize : wallThickness * 1.8,
                     },
-                    material,
+                    stoneMaterial,
                 );
             });
         });
@@ -437,7 +454,7 @@ async function buildDungeon(appInstance, grid, material, decorations = []) {
                 cell.type,
                 { x: pos.x, y: elevation - Math.cos(slopeRadians) * floorThickness / 2, z: pos.z },
                 tileScale,
-                material,
+                stoneMaterial,
                 rotation,
             );
             addBox(
@@ -445,7 +462,7 @@ async function buildDungeon(appInstance, grid, material, decorations = []) {
                 'ceiling',
                 { x: pos.x, y: elevation + wallHeight + Math.cos(slopeRadians) * floorThickness / 2, z: pos.z },
                 tileScale,
-                material,
+                stoneMaterial,
                 rotation,
             );
 
@@ -467,7 +484,7 @@ async function buildDungeon(appInstance, grid, material, decorations = []) {
                             'wall',
                             { x: pos.x + edge.px, y: elevation + wallHeight / 2, z: pos.z + edge.pz },
                             { x: edge.sx, y: wallHeight, z: edge.sz },
-                            material,
+                            stoneMaterial,
                             null,
                         );
 
@@ -509,6 +526,7 @@ defineExpose({
     tileSize,
     wallHeight,
     createDungeonTexture,
+    loadStoneMaterial,
     createDoorTexture,
     createMaterial,
     createDoorMaterial,

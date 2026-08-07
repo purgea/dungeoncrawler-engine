@@ -205,13 +205,14 @@ async function start() {
     const { grid, spawn, decorations = [] } = layout;
     const texture = dungeon.createDungeonTexture(app.value);
     const material = dungeon.createMaterial(texture);
+    const stoneMaterial = await dungeon.loadStoneMaterial(app.value);
 
     collisionGrid = grid;
     minimapGrid.value = grid;
 
     loaderComponent.value.setMessage('Building rooms and corridors...');
     await nextFrame();
-    await dungeon.buildDungeon(app.value, grid, material, decorations);
+    await dungeon.buildDungeon(app.value, grid, material, stoneMaterial, decorations);
 
     loaderComponent.value.setMessage('Placing player...');
     await nextFrame();
