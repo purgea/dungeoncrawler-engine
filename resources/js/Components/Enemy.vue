@@ -15,7 +15,9 @@ let ramps = [];
 let pathfinder = null;
 let elapsed = 0;
 let killCount = 0;
+let enemyTotal = 0;
 let nextPathSearch = 0;
+const DEATH_CLEANUP_DELAY = 1.5;
 const enemies = [];
 const speciesAssets = new Map();
 const projectiles = new Set();
@@ -163,6 +165,7 @@ function setupEnemies(appInstance, playerComponent, placements, config) {
     bloodMaterial = solidMaterial([0.6, 0.055, 0.025], 0.45);
     shadowMaterial = solidMaterial([0.025, 0.016, 0.018], 0, 0.45);
     (placements ?? []).forEach(createEnemy);
+    enemyTotal = enemies.length;
     app.on('update', updateEnemies);
     return getStats();
 }
@@ -346,7 +349,7 @@ function updateAppearance(actor, target, dt) {
         actor.sprite.setLocalScale(actor.config.width * (1 + collapse * 0.32), 1, actor.config.height * (1 - collapse * 0.91));
         actor.sprite.setLocalPosition(0, actor.config.height * (1 - collapse * 0.91) / 2, 0);
         actor.sprite.render.material = actor.assets.normal[0];
-        return;
+        return actor.deathAge >= DEATH_CLEANUP_DELAY;
     }
     const moving = actor.state === 'CHASE' && actor.stagger <= 0;
     const frame = Math.floor((elapsed + actor.phase) / (moving ? 0.13 : 0.32)) % 4;
@@ -359,6 +362,14 @@ function updateAppearance(actor, target, dt) {
         const size = 0.15 + progress * 0.38 + Math.sin(elapsed * 24) * 0.03;
         actor.charge.setLocalScale(size, size, size);
     }
+    return false;
+}
+
+function removeEnemy(actor) {
+    const index = enemies.indexOf(actor);
+    if (index < 0) return;
+    actor.entity.destroy();
+    enemies.splice(index, 1);
 }
 
 function updateActor(actor, target, dt) {
@@ -411,15 +422,17 @@ function updateEnemies(deltaTime) {
         updateProjectiles(dt, target);
         updateParticles(dt);
     }
+    const expired = [];
     for (const actor of enemies) {
         if (!paused && actor.health > 0 && player?.getHealth?.() > 0) updateActor(actor, target, dt);
-        updateAppearance(actor, target, dt);
+        if (updateAppearance(actor, target, dt)) expired.push(actor);
     }
+    expired.forEach(removeEnemy);
 }
 
 function hitSegment(from, to, damage, radius = 0.12) {
     if (!app || app.gamePaused || player?.getHealth?.() <= 0) return null;
-    const hit = nearestEnemyHit(from, to, enemies.map((actor) => ({
+    const hit = nearestEnemyHit(from, to, enemies.filter((actor) => actor.health > 0).map((actor) => ({
         id: actor.id, type: actor.type, health: actor.health, config: actor.config,
         position: bodyPosition(actor), actor,
     })), radius);
@@ -460,7 +473,7 @@ function getEnemies() {
 }
 
 function getStats() {
-    return { total: enemies.length, killed: killCount, remaining: enemies.length - killCount };
+    return { total: enemyTotal, killed: killCount, remaining: Math.max(0, enemyTotal - killCount) };
 }
 
 function getState() {
@@ -485,7 +498,7 @@ function cleanup() {
     projectileMaterial = projectileHaloMaterial = bloodMaterial = shadowMaterial = null;
     app = player = dungeon = pathfinder = null;
     ramps = [];
-    elapsed = killCount = nextPathSearch = 0;
+    elapsed = killCount = enemyTotal = nextPathSearch = 0;
 }
 
 onBeforeUnmount(cleanup);

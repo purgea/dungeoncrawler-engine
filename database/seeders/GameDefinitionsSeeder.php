@@ -42,17 +42,17 @@ final class GameDefinitionsSeeder extends Seeder
                 ['slug' => 'imp', 'sort_order' => 1, 'data' => [
                     'name' => 'Ash Imp', 'health' => 52, 'speed' => 7.2, 'radius' => 0.44,
                     'height' => 1.8, 'width' => 1.55, 'sight' => 10000, 'range' => 1.65,
-                    'damage' => 9, 'windup' => 0.22, 'cooldown' => 0.55,
+                    'damage' => 16, 'windup' => 0.22, 'cooldown' => 0.55,
                 ]],
                 ['slug' => 'acolyte', 'sort_order' => 2, 'data' => [
                     'name' => 'Hollow Acolyte', 'health' => 72, 'speed' => 5.2, 'radius' => 0.46,
                     'height' => 2.25, 'width' => 1.7, 'sight' => 10000, 'range' => 23,
-                    'damage' => 13, 'windup' => 0.4, 'cooldown' => 1.1, 'projectile_speed' => 16,
+                    'damage' => 24, 'windup' => 0.4, 'cooldown' => 1.1, 'projectile_speed' => 16,
                 ]],
                 ['slug' => 'warden', 'sort_order' => 3, 'data' => [
                     'name' => 'Iron Warden', 'health' => 190, 'speed' => 5.3, 'radius' => 0.63,
                     'height' => 2.65, 'width' => 2.05, 'sight' => 10000, 'range' => 2.15,
-                    'damage' => 22, 'windup' => 0.36, 'cooldown' => 0.85,
+                    'damage' => 38, 'windup' => 0.36, 'cooldown' => 0.85,
                 ]],
             ],
             'pickup' => [

@@ -4,7 +4,6 @@ const props = defineProps({
     grid: { type: Array, default: () => [] }, explored: { type: Set, default: () => new Set() },
     player: { type: Object, default: null }, revision: { type: Number, default: 0 },
     markers: { type: Array, default: () => [] }, exit: Object, expanded: Boolean,
-    path: { type: Array, default: () => [] },
 });
 const canvas = ref(null);
 let resizeObserver = null;
@@ -31,19 +30,9 @@ function draw() {
         ctx.fillStyle = tileFloor !== floor ? '#253332' : cell.type === 'vertical-corridor' ? '#a38b52' : '#556759';
         ctx.fillRect((x + offsetX) * scale + .3, (y + offsetY) * scale + .3, Math.max(1, scale - .6), Math.max(1, scale - .6));
     }
-    // The sigils reveal a faint thread through unexplored halls; this also guides floor changes.
-    if (props.path.length) {
-        ctx.beginPath();
-        ctx.strokeStyle = props.expanded ? '#87b79788' : '#87b79766';
-        ctx.lineWidth = Math.max(1, pixelRatio);
-        ctx.setLineDash([2 * pixelRatio, 3 * pixelRatio]);
-        props.path.forEach((p, i) => { const [x, y] = center(p); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
-        ctx.stroke();
-        ctx.setLineDash([]);
-    }
-    const mark = (item, color, always = false) => {
-        if (!props.expanded && item.floor !== floor) return;
-        if (!always && !props.explored.has(`${item.floor}:${item.x}:${item.y}`)) return;
+    const visibleTile = item => props.explored.has(`${item.floor}:${item.x}:${item.y}`) && (props.expanded || item.floor === floor);
+    const mark = (item, color) => {
+        if (!visibleTile(item)) return;
         const [x, y] = center(item);
         ctx.fillStyle = color;
         ctx.save(); ctx.translate(x, y); ctx.rotate(Math.PI / 4);
@@ -51,8 +40,8 @@ function draw() {
         ctx.fillRect(-radius, -radius, radius * 2, radius * 2);
         ctx.restore();
     };
-    for (const item of props.markers) mark(item, item.color ? `rgb(${item.color.map(value => Math.round(value * 255)).join(' ')})` : '#ccd4b2', item.type === 'sigil');
-    if (props.exit) mark(props.exit, '#bb94d6', true);
+    for (const item of props.markers) mark(item, item.color ? `rgb(${item.color.map(value => Math.round(value * 255)).join(' ')})` : '#ccd4b2');
+    if (props.exit) mark(props.exit, '#bb94d6');
     if (props.player) {
         const [x, y] = center(props.player);
         ctx.save(); ctx.translate(x, y); ctx.rotate(-(props.player.yaw || 0) * Math.PI / 180);
@@ -68,7 +57,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
     <aside class="dungeon-map" :class="{ expanded }" aria-label="Dungeon map">
         <div class="map-label"><span>{{ expanded ? 'CARTOGRAPHY' : 'THE DEEP' }}</span><span>{{ player?.floor === 0 ? 'GROUND' : `${player?.floor > 0 ? '+' : ''}${player?.floor ?? 0}m` }}</span></div>
         <canvas ref="canvas" />
-        <div v-if="expanded" class="map-legend"><span class="legend-player">▲ You</span><span class="legend-sigil">◆ Sigil</span><span class="legend-gate">◆ Gate</span><span>··· Route</span><span>Tab to close</span></div>
+        <div v-if="expanded" class="map-legend"><span class="legend-player">▲ You</span><span class="legend-sigil">◆ Sigil</span><span class="legend-gate">◆ Gate</span><span>Tab to close</span></div>
     </aside>
 </template>
 <style scoped>

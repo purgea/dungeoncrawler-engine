@@ -12,7 +12,6 @@ import { colorFromRgb, fogTypeFromName } from '../lighting';
 import { WorldObjects } from '../game/WorldObjects.js';
 import { GameAudio } from '../game/Audio.js';
 import { readSettings, saveSettings } from '../game/RunState.js';
-import { GridPathfinder } from '../ai/GridPathfinder.js';
 
 const emit = defineEmits(['lock-change', 'checkpoint', 'complete', 'restart', 'next', 'home', 'mute-change']);
 const props = defineProps({
@@ -38,8 +37,7 @@ const settings = ref(readSettings());
 const exploredTiles = new Set();
 const audio = new GameAudio();
 let collisionGrid = [], resizeObserver = null, leftMouseHeld = false, world = null, disposed = false;
-let messageTimer = 0, hudTimer = 0, playTime = 0, navigationTimer = 0, pathfinder = null;
-const navigationPath = shallowRef([]);
+let messageTimer = 0, hudTimer = 0, playTime = 0;
 const nextFrame = () => new Promise(resolve => requestAnimationFrame(resolve));
 
 function notify(text, duration = 3) { message.value = text; messageTimer = duration; }
@@ -64,18 +62,6 @@ function revealAroundPlayer(force = false) {
         if (Math.hypot(x - tile.x, y - tile.y) <= 3.25 && cell?.walkable && cell.floor === tile.floor) exploredTiles.add(`${cell.floor}:${x}:${y}`);
     }
     minimapRevision.value++;
-    navigationTimer = 0;
-}
-function updateNavigation() {
-    if (!pathfinder || !minimapPlayer.value) return;
-    const destinations = sigils.value >= props.dungeon.requiredSigils ? [props.dungeon.exit] : world.pickups.filter(p => p.type === 'sigil' && !p.collected);
-    let best = [];
-    for (const destination of destinations) {
-        if (!destination) continue;
-        const path = pathfinder.findPath(minimapPlayer.value, destination);
-        if (path.length && (!best.length || path.length < best.length)) best = path;
-    }
-    navigationPath.value = best;
 }
 function resizeCanvasToViewport() {
     if (app.value && viewport.value) app.value.resizeCanvas(Math.max(1, viewport.value.clientWidth), Math.max(1, viewport.value.clientHeight));
@@ -148,7 +134,6 @@ function onPickup(item) {
                 world.openPortal();
                 text = 'All sigils recovered. The gate is unsealed.';
             }
-            navigationTimer = 0;
             break;
     }
     if (!accepted) return false;
@@ -217,14 +202,12 @@ function updateWorld(rawDt) {
     if (messageTimer <= 0) message.value = '';
     prompt.value = world.nearPortal(camera) ? sigils.value >= props.dungeon.requiredSigils ? 'Enter the unsealed gate' : `${props.dungeon.requiredSigils - sigils.value} more sigils needed` : '';
     hudTimer -= dt;
-    navigationTimer -= dt;
     if (hudTimer <= 0) {
         elapsed.value = Math.floor(playTime);
         revealAroundPlayer();
         markers.value = world.markers();
         hudTimer = 0.1;
     }
-    if (navigationTimer <= 0) { updateNavigation(); navigationTimer = 1; }
 }
 
 async function start() {
@@ -282,14 +265,7 @@ async function start() {
     weaponState.value = weaponComponent.value.getState();
     world = new WorldObjects(instance, layout);
     markers.value = world.markers();
-    pathfinder = new GridPathfinder(collisionGrid, layout.width, layout.height);
     revealAroundPlayer(true);
-    updateNavigation();
-    // Start facing the first step toward an objective, rather than a random wall.
-    if (navigationPath.value.length > 1) {
-        const next = navigationPath.value[1], origin = layout.spawn;
-        playerComponent.value.setRotation(Math.atan2(-(next.x - origin.x), -(next.y - origin.y)) * 180 / Math.PI, 0);
-    }
     dungeonRenderer.value.updateDecorations(playerComponent.value.getRotation().yaw);
     audio.muted = settings.value.muted;
     emit('mute-change', settings.value.muted);
@@ -339,7 +315,7 @@ defineExpose({ cleanup });
         <Enemy ref="enemyComponent" @kill="onEnemyKill" @hit="onHit" />
         <Weapon ref="weaponComponent" @state-change="weaponState = $event" @shot="audio.play($event.id)" @empty="audio.play('empty'); notify('Mana depleted. Aether Wand equipped.', 2)" />
         <DungeonRenderer ref="dungeonRenderer" :layout="dungeon" />
-        <Minimap v-if="status === 'playing'" :grid="minimapGrid" :explored="exploredTiles" :player="minimapPlayer" :revision="minimapRevision" :markers="markers" :exit="dungeon.exit" :expanded="mapOpen" :path="navigationPath" />
+        <Minimap v-if="status === 'playing'" :grid="minimapGrid" :explored="exploredTiles" :player="minimapPlayer" :revision="minimapRevision" :markers="markers" :exit="dungeon.exit" :expanded="mapOpen" />
         <GameHud :status="status" :campaign="campaign" :health="playerHealth" :armor="playerArmor" :weapon="weaponState" :kills="kills" :enemy-count="dungeon.enemies?.length || 0" :sigils="sigils" :required-sigils="dungeon.requiredSigils" :elapsed="elapsed" :message="message" :prompt="prompt" :damage-flash="damageFlash" :pickup-flash="pickupFlash" :hit-flash="hitFlash" :muted="settings.muted" :sensitivity="settings.sensitivity" :has-started="hasStarted" @resume="resume" @restart="emit('restart')" @next="emit('next')" @home="emit('home')" @mute="toggleMute" @sensitivity="setSensitivity" />
         <Loader ref="loaderComponent" />
     </div>
