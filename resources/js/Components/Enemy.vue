@@ -147,9 +147,9 @@ function createEnemy(placement, index) {
     enemies.push({
         id: placement.id ?? `enemy-${index}`, type, config, assets, entity, sprite, shadow, charge,
         health: config.health, state: 'IDLE', phase: index * 0.73,
-        flash: 0, stagger: 0, cooldown: 0, windup: 0,
-        sightTimer: (index % 5) * 0.02, visible: false, awareness: 0, lastSeen: null,
-        path: [], pathIndex: 0, repath: (index % 5) * 0.05, deathAge: 0,
+        flash: 0, cooldown: 0, windup: 0,
+        sightTimer: (index % 8) * 0.02, visible: false, awareness: 0, lastSeen: null,
+        path: [], pathIndex: 0, pathKey: '', repath: (index % 5) * 0.05, deathAge: 0,
     });
 }
 
@@ -217,10 +217,14 @@ function moveActor(actor, destination, dt, speedMultiplier = 1) {
 
 function chase(actor, target, dt) {
     actor.repath -= dt;
-    if (actor.repath <= 0 && elapsed >= nextPathSearch) {
-        const position = actor.entity.getPosition();
-        actor.path = pathfinder.findPath(tileAt(position.x, position.z), tileAt(target.x, target.z));
+    const position = actor.entity.getPosition();
+    const fromTile = tileAt(position.x, position.z);
+    const targetTile = tileAt(target.x, target.z);
+    const pathKey = `${fromTile.x}:${fromTile.y}:${targetTile.x}:${targetTile.y}`;
+    if (actor.repath <= 0 && actor.pathKey !== pathKey && elapsed >= nextPathSearch) {
+        actor.path = pathfinder.findPath(fromTile, targetTile);
         actor.pathIndex = actor.path.length > 1 ? 1 : 0;
+        actor.pathKey = pathKey;
         actor.repath = 0.25 + (actor.phase % 0.15);
         // At most one A* search per frame, even after a large group wakes up.
         nextPathSearch = elapsed + 0.001;
@@ -233,8 +237,8 @@ function chase(actor, target, dt) {
         z: (waypoint.y - dungeon.height / 2) * dungeon.tileSize,
     };
     moveActor(actor, destination, dt);
-    const position = actor.entity.getPosition();
-    if (!final && Math.hypot(position.x - destination.x, position.z - destination.z) < 0.22) actor.pathIndex++;
+    const currentPosition = actor.entity.getPosition();
+    if (!final && Math.hypot(currentPosition.x - destination.x, currentPosition.z - destination.z) < 0.22) actor.pathIndex++;
 }
 
 function beginAttack(actor, target) {
@@ -348,13 +352,14 @@ function updateAppearance(actor, target, dt) {
         const collapse = Math.min(1, actor.deathAge / 0.3);
         actor.sprite.setLocalScale(actor.config.width * (1 + collapse * 0.32), 1, actor.config.height * (1 - collapse * 0.91));
         actor.sprite.setLocalPosition(0, actor.config.height * (1 - collapse * 0.91) / 2, 0);
-        actor.sprite.render.material = actor.assets.normal[0];
+        if (actor.sprite.render.material !== actor.assets.normal[0]) actor.sprite.render.material = actor.assets.normal[0];
         return actor.deathAge >= DEATH_CLEANUP_DELAY;
     }
-    const moving = actor.state === 'CHASE' && actor.stagger <= 0;
+    const moving = actor.state === 'CHASE';
     const frame = Math.floor((elapsed + actor.phase) / (moving ? 0.13 : 0.32)) % 4;
     const effect = actor.flash > 0 ? 'hit' : actor.windup > 0 ? 'attack' : 'normal';
-    actor.sprite.render.material = actor.assets[effect][frame];
+    const material = actor.assets[effect][frame];
+    if (actor.sprite.render.material !== material) actor.sprite.render.material = material;
     const breathing = Math.sin(elapsed * (moving ? 12 : 3) + actor.phase) * (moving ? 0.022 : 0.012);
     actor.sprite.setLocalScale(actor.config.width, 1, actor.config.height * (1 + breathing));
     if (actor.charge.enabled) {
@@ -374,19 +379,17 @@ function removeEnemy(actor) {
 
 function updateActor(actor, target, dt) {
     actor.flash = Math.max(0, actor.flash - dt);
-    actor.stagger = Math.max(0, actor.stagger - dt);
     actor.cooldown = Math.max(0, actor.cooldown - dt);
     actor.sightTimer -= dt;
     actor.awareness = Math.max(0, actor.awareness - dt);
     if (actor.sightTimer <= 0) {
-        actor.sightTimer = 0.06 + (actor.phase % 0.04);
+        actor.sightTimer = 0.14 + (actor.phase % 0.06);
         actor.visible = canSee(actor, target);
         if (actor.visible) {
             actor.lastSeen = { ...target };
             actor.awareness = 7;
         }
     }
-    if (actor.stagger > 0) return;
     if (actor.windup > 0) {
         actor.windup = Math.max(0, actor.windup - dt);
         if (actor.windup <= 0) releaseAttack(actor, target);
@@ -442,16 +445,15 @@ function hitSegment(from, to, damage, radius = 0.12) {
     if (amount <= 0) return null;
     actor.health = Math.max(0, actor.health - amount);
     actor.flash = 0.13;
-    actor.stagger = actor.type === 'warden' ? 0.055 : 0.18;
     actor.awareness = 9;
     actor.lastSeen = targetPosition();
     actor.repath = 0;
+    actor.pathKey = '';
     const position = pointOnSegment(from, to, hit.t);
     burst(position, bloodMaterial, actor.health <= 0 ? 12 : 5, actor.health <= 0 ? 1.2 : 0.8);
-    if (actor.type !== 'warden' || actor.health <= 0) {
+    if (actor.health <= 0) {
         actor.windup = 0;
         actor.charge.enabled = false;
-        actor.cooldown = Math.max(actor.cooldown, 0.45);
     }
     const killed = actor.health <= 0;
     const result = { id: actor.id, type: actor.type, name: actor.config.name, position, t: hit.t, health: actor.health, maxHealth: actor.config.health, killed };

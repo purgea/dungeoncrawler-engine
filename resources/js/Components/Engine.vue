@@ -11,7 +11,7 @@ import GameHud from './GameHud.vue';
 import { colorFromRgb, fogTypeFromName } from '../lighting';
 import { WorldObjects } from '../game/WorldObjects.js';
 import { GameAudio } from '../game/Audio.js';
-import { readSettings, saveSettings } from '../game/RunState.js';
+import { graphicsLightDistanceTiles, graphicsResolutionScale, readSettings, saveSettings } from '../game/RunState.js';
 
 const emit = defineEmits(['lock-change', 'checkpoint', 'complete', 'restart', 'next', 'home', 'mute-change']);
 const props = defineProps({
@@ -47,6 +47,9 @@ function tileFromPosition(position) {
     const x = Math.floor(position.x / tileSize + width / 2 + 0.5), y = Math.floor(position.z / tileSize + height / 2 + 0.5);
     return { x, y, floor: collisionGrid[y]?.[x]?.floor ?? 0, yaw: playerComponent.value?.getRotation?.().yaw ?? 0 };
 }
+function graphicsPixelRatio() {
+    return Math.min(window.devicePixelRatio || 1, 1) * graphicsResolutionScale(settings.value.graphics.quality);
+}
 function revealAroundPlayer(force = false) {
     const camera = playerComponent.value?.getCamera?.();
     if (!camera || !collisionGrid.length) return;
@@ -64,7 +67,14 @@ function revealAroundPlayer(force = false) {
     minimapRevision.value++;
 }
 function resizeCanvasToViewport() {
-    if (app.value && viewport.value) app.value.resizeCanvas(Math.max(1, viewport.value.clientWidth), Math.max(1, viewport.value.clientHeight));
+    if (!app.value || !viewport.value) return;
+    const width = Math.max(1, viewport.value.clientWidth);
+    const height = Math.max(1, viewport.value.clientHeight);
+    app.value.resizeCanvas(width, height);
+    // PlayCanvas clamps maxPixelRatio to the browser DPR. Set the backing
+    // resolution explicitly so Quality can exceed 1x on DPR-1 displays.
+    const ratio = graphicsPixelRatio();
+    app.value.graphicsDevice.setResolution(Math.max(1, Math.floor(width * ratio)), Math.max(1, Math.floor(height * ratio)));
 }
 function onPlayerPointerDown(event) {
     if (event.button !== pc.MOUSEBUTTON_LEFT || status.value !== 'playing') return;
@@ -187,7 +197,7 @@ function updateWorld(rawDt) {
     if (!camera) return;
     playTime += dt;
     dungeonRenderer.value.updateDecorations(playerComponent.value.getRotation().yaw);
-    dungeonRenderer.value.updateLighting(dt);
+    dungeonRenderer.value.updateLighting(dt, camera.getPosition(), graphicsLightDistanceTiles(settings.value.graphics.lighting));
     weaponComponent.value.setMoving(playerComponent.value.isMoving());
     if (leftMouseHeld) weaponComponent.value.fire(camera);
     world.update(dt, camera, {
@@ -212,18 +222,28 @@ function updateWorld(rawDt) {
 
 async function start() {
     loaderComponent.value.setMessage('Awakening the ruins…');
+    const graphics = settings.value.graphics;
     const canvas = document.createElement('canvas');
     canvas.className = 'dungeon-canvas';
     canvas.style.cssText = 'display:block;width:100%;height:100%';
     canvas.setAttribute('aria-label', 'First-person dungeon. Enter the dungeon to play.');
     viewport.value.appendChild(canvas);
-    const instance = new pc.Application(canvas, { keyboard: new pc.Keyboard(window), mouse: new pc.Mouse(canvas) });
+    const instance = new pc.Application(canvas, {
+        keyboard: new pc.Keyboard(window),
+        mouse: new pc.Mouse(canvas),
+        graphicsDeviceOptions: {
+            antialias: graphics.antialias,
+            powerPreference: 'high-performance',
+        },
+    });
     app.value = instance;
     instance.gamePaused = true;
     instance.maxDeltaTime = 0.05;
-    instance.graphicsDevice.maxPixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
+    // Balanced uses a 1x backing buffer; the selected quality scale is applied
+    // explicitly below so it also works on DPR-1 displays.
+    instance.graphicsDevice.maxPixelRatio = graphicsPixelRatio();
     instance.setCanvasFillMode(pc.FILLMODE_NONE);
-    instance.setCanvasResolution(pc.RESOLUTION_AUTO);
+    instance.setCanvasResolution(pc.RESOLUTION_FIXED, 1, 1);
     instance.start();
     resizeCanvasToViewport();
     resizeObserver = new ResizeObserver(resizeCanvasToViewport);
@@ -252,6 +272,7 @@ async function start() {
     playerComponent.value.setupPlayer(instance, canvas, { ...spawn, y: spawn.y + 1.55 }, config);
     playerComponent.value.restoreState(toRaw(props.initialState));
     playerComponent.value.setSensitivity(settings.value.sensitivity);
+    dungeonRenderer.value.updateLighting(0, playerComponent.value.getCamera().getPosition(), graphicsLightDistanceTiles(graphics.lighting));
     loaderComponent.value.setMessage('Summoning the restless…');
     enemyComponent.value.setupEnemies(instance, playerComponent.value, layout.enemies || [], config);
     playerComponent.value.setEnemySystem(enemyComponent.value);

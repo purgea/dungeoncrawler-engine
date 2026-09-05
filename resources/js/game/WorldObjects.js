@@ -101,7 +101,7 @@ export class WorldObjects {
         const trapData = { ...definition, ...data };
         if (trapData.mount === 'wall') {
             this.addWallHead(root, trapData);
-            this.traps.push({ ...trapData, root, spikes: null, warning: trapData.warningMaterial, position, width: this.layout.tileSize * 0.5, lastDamage: -Infinity, cooldown: 0, wasWarning: false });
+            this.traps.push({ ...trapData, root, spikes: null, warning: trapData.warningMaterial, position, width: this.layout.tileSize * 0.5, lastDamage: -Infinity, cooldown: 0, visibilityTimer: 0, visible: false, wasWarning: false });
             return;
         }
         this.mesh(root, 'pressure-plate', 'box', this.stone, [0, 0.025, 0], [width, 0.05, width]);
@@ -224,7 +224,12 @@ export class WorldObjects {
             if (trap.mount === 'wall') {
                 const origin = this.wallOrigin(trap);
                 const target = { x: player.x, y: player.y - 0.45, z: player.z };
-                const visible = traceDungeonSegment(origin, target, this.layout, 0.08) === null;
+                trap.visibilityTimer -= dt;
+                if (trap.visibilityTimer <= 0) {
+                    trap.visible = traceDungeonSegment(origin, target, this.layout, 0.08) === null;
+                    trap.visibilityTimer = 0.12;
+                }
+                const visible = trap.visible;
                 trap.cooldown -= dt;
                 trap.warningMaterial.emissiveIntensity = visible ? 1.3 + Math.sin(this.time * 9) * 0.35 : 0.35;
                 trap.warningMaterial.update();

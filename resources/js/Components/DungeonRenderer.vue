@@ -19,6 +19,7 @@ const lighting = props.layout.lighting;
 const decorationEntities = [];
 const torchLights = [];
 let lightingTime = 0;
+let staticBatchGroupId = -1;
 
 const DUNGEON_TEXTURE_HUE = 38;
 const DUNGEON_TEXTURE_BASE_LIGHTNESS = 36;
@@ -175,6 +176,7 @@ function addBox(appInstance, name, position, scale, material, rotation = null) {
     entity.addComponent('render', {
         type: 'box',
         material,
+        batchGroupId: staticBatchGroupId,
     });
     entity.setLocalPosition(position.x, position.y, position.z);
     entity.setLocalScale(scale.x, scale.y, scale.z);
@@ -212,19 +214,19 @@ function addTorch(appInstance, position, edge, materials) {
     torch.setLocalPosition(position.x, position.y, position.z);
 
     const bracket = new pc.Entity('torch-bracket');
-    bracket.addComponent('render', { type: 'box', material: materials.metal });
+    bracket.addComponent('render', { type: 'box', material: materials.metal, batchGroupId: staticBatchGroupId });
     bracket.setLocalScale(edge.dx === 0 ? 0.26 : 0.46, 0.16, edge.dy === 0 ? 0.26 : 0.46);
     torch.addChild(bracket);
 
     const handle = new pc.Entity('torch-handle');
-    handle.addComponent('render', { type: 'cylinder', material: materials.wood });
+    handle.addComponent('render', { type: 'cylinder', material: materials.wood, batchGroupId: staticBatchGroupId });
     handle.setLocalPosition(-edge.dx * 0.28, 0.28, -edge.dy * 0.28);
     handle.setLocalScale(0.14, 0.68, 0.14);
     handle.setLocalEulerAngles(edge.dy * -22, 0, edge.dx * 22);
     torch.addChild(handle);
 
     const flame = new pc.Entity('torch-flame');
-    flame.addComponent('render', { type: 'sphere', material: materials.flame });
+    flame.addComponent('render', { type: 'sphere', material: materials.flame, batchGroupId: staticBatchGroupId });
     flame.setLocalPosition(-edge.dx * 0.52, 0.78, -edge.dy * 0.52);
     flame.setLocalScale(0.24, 0.42, 0.24);
     torch.addChild(flame);
@@ -246,14 +248,29 @@ function addTorch(appInstance, position, edge, materials) {
         light: light.light,
         baseIntensity: torchLightConfig.intensity,
         phase: Math.random() * Math.PI * 2,
+        position: {
+            x: position.x - edge.dx * 0.72,
+            y: position.y + 0.75,
+            z: position.z - edge.dy * 0.72,
+        },
     });
     appInstance.root.addChild(torch);
 }
 
-function updateLighting(dt = 0) {
+function updateLighting(dt = 0, cameraPosition = null, lightDistanceTiles = 8) {
     lightingTime += dt;
     const flickerConfig = lighting.torch.flicker;
-    torchLights.forEach(({ light, baseIntensity, phase }) => {
+    const lightDistance = tileSize * Math.max(1, Number(lightDistanceTiles) || 8);
+    const lightDistanceSquared = lightDistance * lightDistance;
+    torchLights.forEach(({ light, baseIntensity, phase, position }) => {
+        if (cameraPosition) {
+            const dx = cameraPosition.x - position.x;
+            const dy = cameraPosition.y - position.y;
+            const dz = cameraPosition.z - position.z;
+            const nearby = dx * dx + dz * dz <= lightDistanceSquared && Math.abs(dy) <= wallHeight * 1.5;
+            light.enabled = nearby;
+            if (!nearby) return;
+        }
         if (!flickerConfig.enabled) {
             light.intensity = baseIntensity;
             return;
@@ -330,6 +347,10 @@ async function buildDungeon(appInstance, grid, material, stoneMaterial, decorati
     const floorThickness = 0.16;
     const wallThickness = 0.28;
     const torchMaterials = createTorchMaterials();
+    const batcher = appInstance.batcher;
+    const batchGroup = batcher?.getGroupByName('dungeon-static')
+        || batcher?.addGroup('dungeon-static', false, 64);
+    staticBatchGroupId = batchGroup?.id ?? -1;
     torchLights.length = 0;
     lightingTime = 0;
     const torchTiles = new Map(floorElevations.map((floor) => [floor, []]));
@@ -516,6 +537,10 @@ async function buildDungeon(appInstance, grid, material, stoneMaterial, decorati
     await Promise.all(decorations.map((decoration) => (
         decoration.asset?.path_url ? addDecoration(appInstance, decoration) : null
     )));
+
+    // Static dungeon meshes never move. Spatial batches reduce thousands of box
+    // submissions to a small number of draw calls while preserving culling.
+    if (batcher && staticBatchGroupId >= 0) batcher.generate([staticBatchGroupId]);
 
     return;
 }

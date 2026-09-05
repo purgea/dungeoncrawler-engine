@@ -4,6 +4,35 @@ const MAX_SEED = 2147483647;
 const finite = (value, fallback) => Number.isFinite(value) ? value : fallback;
 const bounded = (value, fallback, min, max) => Math.max(min, Math.min(max, finite(value, fallback)));
 
+export const GRAPHICS_QUALITY_OPTIONS = [
+    { id: 'performance', label: 'Performance', scale: 0.75 },
+    { id: 'balanced', label: 'Balanced', scale: 1 },
+    { id: 'quality', label: 'Quality', scale: 1.25 },
+];
+export const GRAPHICS_LIGHTING_OPTIONS = [
+    { id: 'nearby', label: 'Nearby lights', distanceTiles: 8 },
+    { id: 'extended', label: 'Extended lights', distanceTiles: 12 },
+];
+
+function defaultSettings() {
+    return { muted: false, sensitivity: 0.12, graphics: { quality: 'balanced', antialias: false, lighting: 'nearby' } };
+}
+
+function normalizeGraphics(graphics = {}) {
+    const defaults = defaultSettings().graphics;
+    const quality = GRAPHICS_QUALITY_OPTIONS.some(option => option.id === graphics?.quality) ? graphics.quality : defaults.quality;
+    const lighting = GRAPHICS_LIGHTING_OPTIONS.some(option => option.id === graphics?.lighting) ? graphics.lighting : defaults.lighting;
+    return { quality, antialias: graphics?.antialias === true, lighting };
+}
+
+export function graphicsResolutionScale(quality) {
+    return GRAPHICS_QUALITY_OPTIONS.find(option => option.id === quality)?.scale || 1;
+}
+
+export function graphicsLightDistanceTiles(lighting) {
+    return GRAPHICS_LIGHTING_OPTIONS.find(option => option.id === lighting)?.distanceTiles || 8;
+}
+
 export function campaignLevelUrl({ levelSlug, seed } = {}) {
     if (typeof levelSlug !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(levelSlug) || !Number.isInteger(seed) || seed < 1 || seed > MAX_SEED) return null;
     return `/game/${levelSlug}?seed=${seed}`;
@@ -73,15 +102,25 @@ export function clearCheckpoint() {
 }
 
 export function readSettings() {
-    const defaults = { muted: false, sensitivity: 0.12 };
+    const defaults = defaultSettings();
     try {
         const stored = JSON.parse(localStorage.getItem(SETTINGS_KEY));
-        return { muted: stored?.muted === true, sensitivity: bounded(stored?.sensitivity, defaults.sensitivity, 0.04, 0.28) };
+        return {
+            muted: stored?.muted === true,
+            sensitivity: bounded(stored?.sensitivity, defaults.sensitivity, 0.04, 0.28),
+            graphics: normalizeGraphics(stored?.graphics),
+        };
     } catch { return defaults; }
 }
 
 export function saveSettings(settings) {
-    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* Optional preference. */ }
+    const source = settings && typeof settings === 'object' ? settings : {};
+    const normalized = {
+        muted: source.muted === true,
+        sensitivity: bounded(source.sensitivity, 0.12, 0.04, 0.28),
+        graphics: normalizeGraphics(source.graphics),
+    };
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(normalized)); } catch { /* Optional preference. */ }
 }
 
 export function formatTime(seconds) {
