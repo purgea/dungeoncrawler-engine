@@ -21,4 +21,9 @@ class WorldStage extends Model
     {
         return $this->hasMany(WorldStageLevel::class);
     }
+
+    public function gameDefinitions()
+    {
+        return $this->hasMany(GameDefinition::class)->orderBy('sort_order');
+    }
 }

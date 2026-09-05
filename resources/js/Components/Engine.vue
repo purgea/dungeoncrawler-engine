@@ -17,13 +17,21 @@ import { GridPathfinder } from '../ai/GridPathfinder.js';
 const emit = defineEmits(['lock-change', 'checkpoint', 'complete', 'restart', 'next', 'home', 'mute-change']);
 const props = defineProps({
     dungeon: { type: Object, required: true }, campaign: { type: Object, default: () => ({}) },
-    decorationAssets: { type: Array, default: () => [] }, weaponAssets: { type: Array, default: () => [] },
     initialState: { type: Object, default: () => ({}) },
 });
 const viewport = ref(null), app = shallowRef(null);
 const playerComponent = ref(null), enemyComponent = ref(null), dungeonRenderer = ref(null), loaderComponent = ref(null), weaponComponent = ref(null);
 const minimapGrid = shallowRef([]), minimapPlayer = ref(null), minimapRevision = ref(0), markers = ref([]);
-const playerHealth = ref(100), playerArmor = ref(0), weaponState = ref({ id: 'wand', name: 'Aether Wand', mana: 60, unlocked: ['wand'] });
+const startingWeapon = props.dungeon.definitions?.weapon?.find((definition) => definition.starting) || props.dungeon.definitions?.weapon?.[0] || {};
+const maxMana = Number(props.dungeon.definitions?.rule?.find((definition) => definition.id === 'gate')?.max_mana) || 100;
+const playerHealth = ref(100), playerArmor = ref(0), weaponState = ref({
+    id: startingWeapon.id,
+    name: startingWeapon.name,
+    mana: maxMana * 0.6,
+    maxMana,
+    unlocked: startingWeapon.id ? [startingWeapon.id] : [],
+    weapons: props.dungeon.definitions?.weapon || [],
+});
 const status = ref('loading'), hasStarted = ref(false), elapsed = ref(0), kills = ref(0), sigils = ref(0), mapOpen = ref(false);
 const message = ref(''), prompt = ref(''), damageFlash = ref(0), pickupFlash = ref(0), hitFlash = ref(0), target = ref(null);
 const settings = ref(readSettings());
@@ -32,7 +40,7 @@ const audio = new GameAudio();
 let collisionGrid = [], resizeObserver = null, leftMouseHeld = false, world = null, disposed = false;
 let messageTimer = 0, targetTimer = 0, hudTimer = 0, playTime = 0, navigationTimer = 0, pathfinder = null;
 const navigationPath = shallowRef([]), navigationHint = ref('');
-const objective = computed(() => sigils.value >= props.dungeon.requiredSigils ? `Gate unsealed · ${navigationHint.value || 'Find the exit portal'}` : `${sigils.value} / ${props.dungeon.requiredSigils || 3} sigils recovered · ${navigationHint.value || 'Explore the ruins'}`);
+const objective = computed(() => sigils.value >= props.dungeon.requiredSigils ? `Gate unsealed · ${navigationHint.value || 'Find the exit portal'}` : `${sigils.value} / ${props.dungeon.requiredSigils} sigils recovered · ${navigationHint.value || 'Explore the ruins'}`);
 const nextFrame = () => new Promise(resolve => requestAnimationFrame(resolve));
 
 function notify(text, duration = 3) { message.value = text; messageTimer = duration; }
@@ -126,14 +134,14 @@ function completeLevel() {
 function onPickup(item) {
     let accepted = false, text = '';
     switch (item.type) {
-        case 'health': accepted = playerComponent.value.heal(30); text = '+30 vitality'; break;
-        case 'armor': accepted = playerComponent.value.addArmor(25); text = '+25 armor'; break;
-        case 'mana': accepted = Boolean(weaponComponent.value.addMana(25)); text = '+25 mana'; break;
+        case 'health': accepted = playerComponent.value.heal(item.amount || 0); text = `+${item.amount || 0} vitality`; break;
+        case 'armor': accepted = playerComponent.value.addArmor(item.amount || 0); text = `+${item.amount || 0} armor`; break;
+        case 'mana': accepted = Boolean(weaponComponent.value.addMana(item.amount || 0)); text = `+${item.amount || 0} mana`; break;
         case 'weapon':
             accepted = weaponComponent.value.unlockWeapon(item.weapon);
             if (!accepted) accepted = Boolean(weaponComponent.value.addMana(20));
             else weaponComponent.value.addMana(15);
-            text = item.weapon === 'crossbow' ? 'Grave Crossbow · [2] · three spectral bolts' : 'Ember Staff · [3] · infernal fireballs';
+            text = `${item.name || item.weapon} · weapon unlocked`;
             break;
         case 'sigil':
             sigils.value++;
@@ -156,7 +164,7 @@ function onPickup(item) {
 function onEnemyKill(enemy) {
     kills.value++;
     audio.play('kill');
-    if (enemy.type === 'warden') notify('The Iron Warden has fallen.', 3);
+    if (enemy.type === 'warden') notify(`${enemy.name || 'The guardian'} has fallen.`, 3);
     // A small on-kill return rewards aggressive play without a forced ammo grind.
     weaponComponent.value?.addMana?.(3);
 }
@@ -203,7 +211,7 @@ function updateWorld(rawDt) {
     if (leftMouseHeld) weaponComponent.value.fire(camera);
     world.update(dt, camera, {
         onPickup,
-        onTrap: trap => { playerComponent.value.takeDamage(trap.type === 'fire' ? 16 : 22); },
+        onTrap: trap => { playerComponent.value.takeDamage(trap.damage || 0); },
         onWarning: () => audio.play('warning'),
     });
     damageFlash.value = Math.max(0, damageFlash.value - dt * 2.2);
@@ -262,7 +270,7 @@ async function start() {
     loaderComponent.value.setMessage('Carving the halls…');
     await renderer.buildDungeon(instance, layout.grid, material, stoneMaterial, layout.decorations || []);
     if (disposed) return;
-    const config = { grid: collisionGrid, width: layout.width, height: layout.height, tileSize: layout.tileSize, wallHeight: layout.wallHeight, lighting };
+    const config = { grid: collisionGrid, width: layout.width, height: layout.height, tileSize: layout.tileSize, wallHeight: layout.wallHeight, lighting, definitions: layout.definitions || {} };
     const spawn = renderer.worldPosition(layout.spawn.x, layout.spawn.y, layout.spawn.floor);
     playerComponent.value.setupPlayer(instance, canvas, { ...spawn, y: spawn.y + 1.55 }, config);
     playerComponent.value.restoreState(toRaw(props.initialState));
@@ -270,7 +278,9 @@ async function start() {
     loaderComponent.value.setMessage('Summoning the restless…');
     enemyComponent.value.setupEnemies(instance, playerComponent.value, layout.enemies || [], config);
     playerComponent.value.setEnemySystem(enemyComponent.value);
-    await weaponComponent.value.setupWeapon(instance, playerComponent.value.getCamera(), toRaw(props.weaponAssets), lighting);
+    const manaLimit = layout.definitions?.rule?.find((definition) => definition.id === 'gate')?.max_mana;
+    const weaponDefinitions = (layout.definitions?.weapon || []).filter((definition) => definition.path_url);
+    await weaponComponent.value.setupWeapon(instance, playerComponent.value.getCamera(), toRaw(weaponDefinitions), lighting, { definitions: layout.definitions?.weapon || [], maxMana: manaLimit });
     if (disposed) return;
     weaponComponent.value.setCollisionGrid(collisionGrid, layout.width, layout.height, layout.tileSize, layout.wallHeight);
     weaponComponent.value.setEnemySystem(enemyComponent.value);
@@ -336,7 +346,7 @@ defineExpose({ cleanup });
         <Weapon ref="weaponComponent" @state-change="weaponState = $event" @shot="audio.play($event.id)" @empty="audio.play('empty'); notify('Mana depleted. Aether Wand equipped.', 2)" />
         <DungeonRenderer ref="dungeonRenderer" :layout="dungeon" />
         <Minimap v-if="status === 'playing'" :grid="minimapGrid" :explored="exploredTiles" :player="minimapPlayer" :revision="minimapRevision" :markers="markers" :exit="dungeon.exit" :expanded="mapOpen" :path="navigationPath" />
-        <GameHud :status="status" :campaign="campaign" :health="playerHealth" :armor="playerArmor" :weapon="weaponState" :kills="kills" :enemy-count="dungeon.enemies?.length || 0" :sigils="sigils" :required-sigils="dungeon.requiredSigils || 3" :elapsed="elapsed" :message="message" :prompt="prompt" :damage-flash="damageFlash" :pickup-flash="pickupFlash" :hit-flash="hitFlash" :target="target" :muted="settings.muted" :sensitivity="settings.sensitivity" :has-started="hasStarted" :map-open="mapOpen" :objective="objective" @resume="resume" @restart="emit('restart')" @next="emit('next')" @home="emit('home')" @mute="toggleMute" @sensitivity="setSensitivity" />
+        <GameHud :status="status" :campaign="campaign" :health="playerHealth" :armor="playerArmor" :weapon="weaponState" :kills="kills" :enemy-count="dungeon.enemies?.length || 0" :sigils="sigils" :required-sigils="dungeon.requiredSigils" :elapsed="elapsed" :message="message" :prompt="prompt" :damage-flash="damageFlash" :pickup-flash="pickupFlash" :hit-flash="hitFlash" :target="target" :muted="settings.muted" :sensitivity="settings.sensitivity" :has-started="hasStarted" :map-open="mapOpen" :objective="objective" @resume="resume" @restart="emit('restart')" @next="emit('next')" @home="emit('home')" @mute="toggleMute" @sensitivity="setSensitivity" />
         <Loader ref="loaderComponent" />
     </div>
 </template>

@@ -1,35 +1,54 @@
-export const MAX_MANA = 100;
+const DEFAULT_MAX_MANA = 100;
 
-export const WEAPONS = Object.freeze([
-    Object.freeze({ id: 'wand', name: 'Aether Wand', slot: 1, cost: 0, damage: 22, cooldown: 0.3, speed: 34, radius: 0.1, range: 60, color: [0.24, 0.7, 1], description: 'Swift arcane bolts · infinite charge' }),
-    Object.freeze({ id: 'crossbow', name: 'Grave Crossbow', slot: 2, cost: 5, damage: 25, cooldown: 0.6, speed: 60, radius: 0.075, range: 80, color: [0.34, 1, 0.54], description: 'Three spectral bolts · 5 mana' }),
-    Object.freeze({ id: 'emberstaff', name: 'Ember Staff', slot: 3, cost: 12, damage: 95, cooldown: 0.9, speed: 24, radius: 0.25, range: 65, color: [1, 0.3, 0.06], description: 'Heavy infernal fireball · 12 mana' }),
-]);
+function normalizeDefinition(definition, index) {
+    return {
+        ...definition,
+        id: definition.id,
+        slot: Number(definition.slot ?? index + 1),
+        cost: Number(definition.cost ?? 0),
+        damage: Number(definition.damage ?? 1),
+        cooldown: Number(definition.cooldown ?? 0.5),
+        speed: Number(definition.speed ?? 30),
+        radius: Number(definition.radius ?? 0.1),
+        range: Number(definition.range ?? 60),
+        color: definition.color || [0.5, 0.8, 1],
+    };
+}
 
-const definition = (idOrSlot) => WEAPONS.find((weapon) => weapon.id === idOrSlot || weapon.slot === Number(idOrSlot));
+const definitionFor = (definitions, idOrSlot) => definitions.find((weapon) => (
+    weapon.id === idOrSlot || weapon.slot === Number(idOrSlot)
+));
 
-/** Serializable inventory with a simulation-time fire rate (pause freezes it). */
+/** Runtime weapon inventory. Definitions come from the active world stage. */
 export class Arsenal {
-    constructor(state = {}) {
+    constructor(definitions = [], state = {}, maxMana = null) {
+        this.definitions = definitions.map(normalizeDefinition).sort((a, b) => a.slot - b.slot);
+        this.maxMana = Number(state.maxMana ?? maxMana ?? DEFAULT_MAX_MANA);
+        this.cooldown = 0;
         this.restore(state);
     }
 
     restore(state = {}) {
-        this.unlocked = new Set(['wand', ...(Array.isArray(state.unlocked) ? state.unlocked.filter((id) => definition(id)?.id === id) : [])]);
-        this.id = this.unlocked.has(state.id) ? state.id : 'wand';
-        this.mana = Number.isFinite(state.mana) ? Math.max(0, Math.min(MAX_MANA, Math.floor(state.mana))) : 60;
+        this.unlocked = new Set([
+            ...this.definitions.filter((weapon) => weapon.starting).map((weapon) => weapon.id),
+            ...(Array.isArray(state.unlocked) ? state.unlocked.filter((id) => definitionFor(this.definitions, id)?.id === id) : []),
+        ]);
+        if (!this.unlocked.size && this.definitions[0]) this.unlocked.add(this.definitions[0].id);
+        this.id = this.unlocked.has(state.id) ? state.id : this.definitions.find((weapon) => this.unlocked.has(weapon.id))?.id;
+        this.maxMana = Math.max(1, Number(state.maxMana ?? this.maxMana) || DEFAULT_MAX_MANA);
+        this.mana = Number.isFinite(state.mana) ? Math.max(0, Math.min(this.maxMana, Math.floor(state.mana))) : this.maxMana * 0.6;
         this.cooldown = 0;
     }
 
-    get weapon() { return definition(this.id); }
-
+    get weapon() { return definitionFor(this.definitions, this.id) || this.definitions[0]; }
     tick(dt) { this.cooldown = Math.max(0, this.cooldown - Math.max(0, dt)); }
 
     fire() {
         const weapon = this.weapon;
+        if (!weapon) return { fired: false, reason: 'missing', weapon: null };
         if (this.cooldown > 1e-6) return { fired: false, reason: 'cooldown', weapon };
         if (this.mana < weapon.cost) {
-            this.id = 'wand';
+            this.id = this.definitions.find((entry) => this.unlocked.has(entry.id) && entry.cost === 0)?.id || this.id;
             return { fired: false, reason: 'mana', weapon };
         }
         this.mana -= weapon.cost;
@@ -38,14 +57,15 @@ export class Arsenal {
     }
 
     select(idOrSlot) {
-        const weapon = definition(idOrSlot);
+        const weapon = definitionFor(this.definitions, idOrSlot);
         if (!weapon || !this.unlocked.has(weapon.id) || this.id === weapon.id) return false;
         this.id = weapon.id;
         return true;
     }
 
     cycle(direction = 1) {
-        const choices = WEAPONS.filter((weapon) => this.unlocked.has(weapon.id));
+        const choices = this.definitions.filter((weapon) => this.unlocked.has(weapon.id));
+        if (!choices.length) return false;
         const index = choices.findIndex((weapon) => weapon.id === this.id);
         return this.select(choices[(index + (direction < 0 ? -1 : 1) + choices.length) % choices.length].id);
     }
@@ -53,12 +73,12 @@ export class Arsenal {
     addMana(amount) {
         if (!Number.isFinite(amount) || amount <= 0) return 0;
         const previous = this.mana;
-        this.mana = Math.min(MAX_MANA, this.mana + Math.floor(amount));
+        this.mana = Math.min(this.maxMana, this.mana + Math.floor(amount));
         return this.mana - previous;
     }
 
     unlock(id) {
-        const weapon = definition(id);
+        const weapon = definitionFor(this.definitions, id);
         if (!weapon || this.unlocked.has(weapon.id)) return false;
         this.unlocked.add(weapon.id);
         this.id = weapon.id;
@@ -66,14 +86,15 @@ export class Arsenal {
     }
 
     getState() {
+        const weapon = this.weapon || {};
         return {
-            id: this.id,
-            name: this.weapon.name,
-            slot: this.weapon.slot,
+            id: weapon.id,
+            name: weapon.name,
+            slot: weapon.slot,
             mana: this.mana,
-            maxMana: MAX_MANA,
-            unlocked: WEAPONS.filter((weapon) => this.unlocked.has(weapon.id)).map((weapon) => weapon.id),
-            weapons: WEAPONS.map((weapon) => ({ ...weapon, unlocked: this.unlocked.has(weapon.id) })),
+            maxMana: this.maxMana,
+            unlocked: this.definitions.filter((entry) => this.unlocked.has(entry.id)).map((entry) => entry.id),
+            weapons: this.definitions.map((entry) => ({ ...entry, unlocked: this.unlocked.has(entry.id) })),
         };
     }
 }

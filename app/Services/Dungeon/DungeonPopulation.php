@@ -4,7 +4,7 @@ namespace App\Services\Dungeon;
 
 final class DungeonPopulation
 {
-    public function populate(array $layout, int $seed): array
+    public function populate(array $layout, int $seed, array $definitions = []): array
     {
         $random = new SeededRandom($seed ^ 0x41C64E6D);
         $traversal = new DungeonTraversal;
@@ -52,7 +52,9 @@ final class DungeonPopulation
             unset($available[$best]);
         }
 
-        while (count($sigilKeys) < 3 && $available !== []) {
+        $rule = collect($definitions['rule'] ?? [])->firstWhere('id', 'gate') ?? [];
+        $requiredSigils = max(1, (int) ($rule['required_sigils'] ?? 3));
+        while (count($sigilKeys) < $requiredSigils && $available !== []) {
             $best = null;
             $bestScore = -INF;
             foreach (array_keys($available) as $key) {
@@ -79,7 +81,14 @@ final class DungeonPopulation
         }
 
         // Supply the first weapon early and the stronger staff deeper in the level.
-        foreach (['crossbow' => 0.18, 'emberstaff' => 0.5] as $weapon => $progress) {
+        $weaponDefinitions = array_values(array_filter(
+            $definitions['weapon'] ?? [],
+            fn (array $definition): bool => isset($definition['pickup_progress']),
+        ));
+        usort($weaponDefinitions, fn (array $a, array $b): int => ($a['pickup_progress'] ?? 0) <=> ($b['pickup_progress'] ?? 0));
+        foreach ($weaponDefinitions as $weaponDefinition) {
+            $weapon = $weaponDefinition['id'];
+            $progress = (float) ($weaponDefinition['pickup_progress'] ?? 0.5);
             $weaponKeys = array_keys($available);
             usort($weaponKeys, fn (string $a, string $b): int => abs($distances[$a] - $distances[$exitKey] * $progress) <=> abs($distances[$b] - $distances[$exitKey] * $progress));
             if ($weaponKeys === []) {
@@ -90,13 +99,16 @@ final class DungeonPopulation
             unset($available[$key]);
         }
 
+        $enemyDefinitions = array_values($definitions['enemy'] ?? []);
+        $enemyById = array_column($enemyDefinitions, null, 'id');
         $enemyKeys = array_values(array_filter(array_keys($available), $safe));
         $enemies = [];
         if ($enemyKeys !== []) {
             $guardDistances = $traversal->distances($layout['grid'], $layout['tileSize'], $tiles[$sigilKeys[count($sigilKeys) - 1]]);
             usort($enemyKeys, fn (string $a, string $b): int => $guardDistances[$a] <=> $guardDistances[$b]);
             $key = array_shift($enemyKeys);
-            $enemies[] = ['id' => 'enemy-warden', 'type' => 'warden', ...$tiles[$key]];
+            $warden = isset($enemyById['warden']) ? 'warden' : ($enemyDefinitions[0]['id'] ?? 'imp');
+            $enemies[] = ['id' => 'enemy-'.$warden, 'type' => $warden, ...$tiles[$key]];
             unset($available[$key]);
         }
         $enemyKeys = $random->shuffle($enemyKeys);
@@ -109,12 +121,14 @@ final class DungeonPopulation
             if (array_filter($enemies, fn (array $enemy): bool => $enemy['floor'] === $tiles[$key]['floor'] && hypot($enemy['x'] - $tiles[$key]['x'], $enemy['y'] - $tiles[$key]['y']) < 3) !== []) {
                 continue;
             }
-            $enemies[] = ['id' => 'enemy-'.count($enemies), 'type' => count($enemies) % 3 === 0 ? 'acolyte' : 'imp', ...$tiles[$key]];
+            $enemyType = $enemyDefinitions === [] ? 'imp' : $enemyDefinitions[count($enemies) % count($enemyDefinitions)]['id'];
+            $enemies[] = ['id' => 'enemy-'.count($enemies), 'type' => $enemyType, ...$tiles[$key]];
             unset($available[$key]);
         }
 
         $traps = [];
         $trapCount = min(12, max(2, intdiv(count($tiles), 100)));
+        $trapDefinitions = array_values($definitions['trap'] ?? []);
         foreach ($random->shuffle(array_keys($available)) as $key) {
             if (count($traps) >= $trapCount) {
                 break;
@@ -122,18 +136,28 @@ final class DungeonPopulation
             if (! $safe($key) || $exitDistances[$key] < 3) {
                 continue;
             }
-            $traps[] = ['id' => 'trap-'.count($traps), 'type' => count($traps) % 2 === 0 ? 'spikes' : 'fire', 'phase' => $random->int(0, 4000) / 1000, ...$tiles[$key]];
+            $trapDefinition = $trapDefinitions === [] ? [] : $trapDefinitions[count($traps) % count($trapDefinitions)];
+            $traps[] = [
+                'id' => 'trap-'.count($traps),
+                'type' => $trapDefinition['id'] ?? (count($traps) % 2 === 0 ? 'spikes' : 'fire'),
+                'damage' => $trapDefinition['damage'] ?? null,
+                'phase' => $random->int(0, 4000) / 1000,
+                ...$tiles[$key],
+            ];
             unset($available[$key]);
         }
 
         $supplyCount = max(6, (int) ceil(count($enemies) * 0.9));
-        $supplyTypes = ['health', 'mana', 'mana', 'armor'];
+        $supplyTypes = array_values(array_map(
+            fn (array $definition): string => $definition['id'],
+            array_filter($definitions['pickup'] ?? [], fn (array $definition): bool => ($definition['role'] ?? null) === 'supply'),
+        )) ?: ['health', 'mana', 'mana', 'armor'];
         $supplyKeys = $random->shuffle(array_keys($available));
         for ($index = 0; $index < min($supplyCount, count($supplyKeys)); $index++) {
             $key = $supplyKeys[$index];
             $pickups[] = ['id' => 'supply-'.$index, 'type' => $supplyTypes[$index % count($supplyTypes)], ...$tiles[$key]];
         }
 
-        return ['seed' => $seed, 'enemies' => $enemies, 'pickups' => $pickups, 'traps' => $traps, 'exit' => $exit, 'requiredSigils' => count($sigilKeys)];
+        return ['seed' => $seed, 'enemies' => $enemies, 'pickups' => $pickups, 'traps' => $traps, 'exit' => $exit, 'requiredSigils' => count($sigilKeys) ?: $requiredSigils];
     }
 }

@@ -3,7 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Storage;
+use App\Services\ExtraAssets;
 
 class World extends Model
 {
@@ -24,7 +24,7 @@ class World extends Model
             return null;
         }
 
-        $path = Storage::disk('extras')->path($this->image);
+        $path = ExtraAssets::disk()->path($this->image);
 
         return str_replace('\\', '/', 'file:///' . $path);
     }
@@ -35,7 +35,7 @@ class World extends Model
             return null;
         }
 
-        $path = Storage::disk('extras')->path($this->background);
+        $path = ExtraAssets::disk()->path($this->background);
 
         return str_replace('\\', '/', 'file:///' . $path);
     }
@@ -46,7 +46,7 @@ class World extends Model
             return null;
         }
 
-        $path = Storage::disk('extras')->path($this->music);
+        $path = ExtraAssets::disk()->path($this->music);
 
         return str_replace('\\', '/', 'file:///' . $path);
     }

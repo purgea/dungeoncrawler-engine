@@ -4,7 +4,7 @@ import * as pc from 'playcanvas';
 import { getRampCells, isWalkableWorldPosition, surfaceElevation, tileAtWorldPosition } from '../ai/GridCollision.js';
 import { GridPathfinder } from '../ai/GridPathfinder.js';
 import { pointOnSegment, traceDungeonSegment } from '../game/Combat.js';
-import { ENEMY_TYPES, nearestEnemyHit, segmentBodyIntersection } from '../game/EnemyCombat.js';
+import { nearestEnemyHit, segmentBodyIntersection } from '../game/EnemyCombat.js';
 import { createEnemyFrame } from '../game/EnemySprites.js';
 
 const emit = defineEmits(['state-change', 'attack', 'hit', 'kill']);
@@ -113,8 +113,10 @@ function setState(actor, state) {
 }
 
 function createEnemy(placement, index) {
-    const type = ENEMY_TYPES[placement.type] ? placement.type : 'imp';
-    const config = ENEMY_TYPES[type];
+    const type = placement.type;
+    const source = dungeon.definitions?.enemy?.find((definition) => definition.id === type);
+    const config = source ? { ...source, projectileSpeed: source.projectileSpeed ?? source.projectile_speed } : null;
+    if (!config) return;
     const assets = assetsFor(type);
     // Placements are map coordinates. The single-enemy compatibility entry
     // point marks world positions explicitly instead of guessing from values.
@@ -167,7 +169,8 @@ function setupEnemies(appInstance, playerComponent, placements, config) {
 }
 
 function setupEnemy(appInstance, playerComponent, spawnPoint, config) {
-    return setupEnemies(appInstance, playerComponent, [{ ...spawnPoint, id: 'enemy-0', type: 'imp', world: true }], config);
+    const type = config.definitions?.enemy?.[0]?.id || 'imp';
+    return setupEnemies(appInstance, playerComponent, [{ ...spawnPoint, id: 'enemy-0', type, world: true }], config);
 }
 
 function canWalk(actor, x, z, from) {
@@ -439,7 +442,7 @@ function hitSegment(from, to, damage, radius = 0.12) {
         actor.cooldown = Math.max(actor.cooldown, 0.45);
     }
     const killed = actor.health <= 0;
-    const result = { id: actor.id, type: actor.type, position, t: hit.t, health: actor.health, maxHealth: actor.config.health, killed };
+    const result = { id: actor.id, type: actor.type, name: actor.config.name, position, t: hit.t, health: actor.health, maxHealth: actor.config.health, killed };
     emit('hit', result);
     if (killed) {
         killCount++;

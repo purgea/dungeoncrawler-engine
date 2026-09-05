@@ -51,7 +51,7 @@ function draw() {
         ctx.fillRect(-radius, -radius, radius * 2, radius * 2);
         ctx.restore();
     };
-    for (const item of props.markers) mark(item, ({ sigil: '#bce6ae', weapon: '#d7af5e', health: '#cc6c67', armor: '#83b9bb', mana: '#709fdb' })[item.type] || '#ccd4b2', item.type === 'sigil');
+    for (const item of props.markers) mark(item, item.color ? `rgb(${item.color.map(value => Math.round(value * 255)).join(' ')})` : '#ccd4b2', item.type === 'sigil');
     if (props.exit) mark(props.exit, '#bb94d6', true);
     if (props.player) {
         const [x, y] = center(props.player);

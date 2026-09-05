@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Asset;
 use App\Models\WorldStageLevel;
 use App\Services\Dungeon\DungeonGenerator;
 use App\Services\Dungeon\SeededRandom;
@@ -36,9 +35,10 @@ class DungeonController extends Controller
     {
         $stage = $level->stage;
 
-        $decorationAssets = Asset::where('type', 'decorations')->orderBy('id')->get();
-        $musicAssets = Asset::where('type', 'music')->where('world_id', $stage->world_id)->where('world_stage_id', $stage->id)->orderBy('id')->get();
-        $weaponAssets = Asset::where('type', 'weapons')->orderBy('id')->get();
+        $definitions = $stage->gameDefinitions
+            ->groupBy('kind')
+            ->map(fn ($entries): array => $entries->map(fn ($entry): array => $entry->toPayload())->values()->all())
+            ->all();
 
         $validated = $request->validate(['seed' => ['sometimes', 'integer', 'min:1', 'max:'.SeededRandom::MAX_SEED]]);
         $runSeed = isset($validated['seed'])
@@ -58,14 +58,11 @@ class DungeonController extends Controller
 
         return Inertia::render('Game', [
             'dungeon' => $generator->generate(
-                $decorationAssets->toArray(),
                 $level->data ?? [],
                 $seed,
                 $stage->lighting ?? [],
+                $definitions,
             ),
-            'musicAssets' => $musicAssets,
-            'decorationAssets' => $decorationAssets,
-            'weaponAssets' => $weaponAssets,
             'campaign' => [
                 'levelId' => $level->id,
                 'levelSlug' => $level->slug,

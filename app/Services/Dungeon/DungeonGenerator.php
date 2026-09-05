@@ -26,10 +26,11 @@ final class DungeonGenerator
      *     pickups: list<array<string, mixed>>,
      *     traps: list<array<string, mixed>>,
      *     exit: array{x: int, y: int, floor: int},
-     *     requiredSigils: int
+     *     requiredSigils: int,
+     *     definitions: array<string, list<array<string, mixed>>>
      * }
      */
-    public function generate(array $decorationAssets = [], array $data = [], int $seed = 1, array $lighting = []): array
+    public function generate(array $data = [], int $seed = 1, array $lighting = [], array $definitions = []): array
     {
         $this->random = new SeededRandom($seed);
         $lighting = $this->resolveLighting($lighting !== [] ? $lighting : ($data['lighting'] ?? []));
@@ -171,11 +172,13 @@ final class DungeonGenerator
             'y' => (int) floor($startRoom['y'] + $startRoom['h'] / 2),
             'floor' => $startRoom['floor'],
         ];
+        $definitions = $definitions !== [] ? $definitions : ($data['definitions'] ?? []);
+        $decorationDefinitions = $definitions['decoration'] ?? [];
         $population = (new DungeonPopulation)->populate([
             'grid' => $grid, 'tileSize' => $tileSize, 'spawn' => $spawn,
-        ], $seed);
+        ], $seed, $definitions);
         $decorationCount = max(0, (int) ($data['decorations']['count'] ?? 20));
-        $floorAssets = array_values(array_filter($decorationAssets, fn (array $asset): bool => ($asset['placement'] ?? 'floor') === 'floor'));
+        $floorAssets = array_values(array_filter($decorationDefinitions, fn (array $definition): bool => ($definition['placement'] ?? 'floor') === 'floor'));
         $decorations = $this->selectDecorations($grid, [
             $spawn, $population['exit'], ...$population['enemies'], ...$population['pickups'], ...$population['traps'],
         ], $floorAssets, $width, $height, $decorationCount);
@@ -188,6 +191,7 @@ final class DungeonGenerator
             'wallHeight' => $wallHeight,
             'floors' => $floorElevations,
             'lighting' => $lighting,
+            'definitions' => $definitions,
             'grid' => $grid,
             'startRoom' => $startRoom,
             'spawn' => $spawn,

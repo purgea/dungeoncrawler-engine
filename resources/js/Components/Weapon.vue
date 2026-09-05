@@ -1,8 +1,7 @@
 <script setup>
 import { onBeforeUnmount } from 'vue';
 import * as pc from 'playcanvas';
-import crossbowUrl from '../../../extras/weapons/crossbow.png';
-import { Arsenal, WEAPONS } from '../game/Weapons.js';
+import { Arsenal } from '../game/Weapons.js';
 import { pointOnSegment, traceDungeonSegment } from '../game/Combat.js';
 
 const emit = defineEmits(['state-change', 'shot', 'hit', 'empty']);
@@ -13,7 +12,7 @@ let weapon = null;
 let flash = null;
 let flashLight = null;
 let overlayLayer = null;
-let arsenal = new Arsenal();
+let arsenal = new Arsenal([]);
 let dungeon = { grid: [], width: 0, height: 0, tileSize: 1, wallHeight: 3.3 };
 let bobTime = 0;
 let moving = false;
@@ -209,17 +208,17 @@ function createFlash() {
     camera.addChild(flashLight);
 }
 
-async function setupWeapon(appInstance, cameraEntity, weaponAssets = [], lightingConfig = {}, options = {}) {
+async function setupWeapon(appInstance, cameraEntity, weaponDefinitions = [], lightingConfig = {}, options = {}) {
     cleanup();
     const setupGeneration = generation;
     app = appInstance;
     camera = cameraEntity;
-    arsenal = new Arsenal(options.state || {});
+    arsenal = new Arsenal(options.definitions || [], options.state || {}, options.maxMana);
     enemySystem = options.enemySystem || null;
     overlayLayer = new pc.Layer({ name: 'First person weapons', opaqueSortMode: pc.SORTMODE_MANUAL, transparentSortMode: pc.SORTMODE_MANUAL, clearDepthBuffer: true });
     app.scene.layers.push(overlayLayer);
     camera.camera.layers = [...camera.camera.layers, overlayLayer.id];
-    for (const definition of WEAPONS) {
+    for (const definition of arsenal.definitions) {
         const texture = textureFromCanvas(createRelicCanvas(definition.id));
         textures.set(definition.id, texture);
         spriteMaterials.set(definition.id, spriteMaterial(texture));
@@ -234,24 +233,27 @@ async function setupWeapon(appInstance, cameraEntity, weaponAssets = [], lightin
     applySelection();
     app.on('update', updateWeapon);
     emitState();
-    const asset = weaponAssets.find((item) => /crossbow/i.test(item.path_url || item.path || item.key || ''));
-    const crossbow = await loadTexture(asset?.path_url || crossbowUrl);
-    if (setupGeneration !== generation || !app || !crossbow) return;
-    crossbow.addressU = pc.ADDRESS_CLAMP_TO_EDGE;
-    crossbow.addressV = pc.ADDRESS_CLAMP_TO_EDGE;
-    crossbow.minFilter = pc.FILTER_LINEAR;
-    crossbow.magFilter = pc.FILTER_LINEAR;
-    textures.set('crossbow', crossbow);
-    const material = spriteMaterials.get('crossbow');
-    material.diffuseMap = crossbow;
-    material.emissiveMap = crossbow;
-    material.opacityMap = crossbow;
-    material.update();
+    for (const definition of weaponDefinitions) {
+        if (setupGeneration !== generation || !app || !definition.weapon || !definition.path_url) break;
+        const texture = await loadTexture(definition.path_url);
+        if (!texture) continue;
+        texture.addressU = pc.ADDRESS_CLAMP_TO_EDGE;
+        texture.addressV = pc.ADDRESS_CLAMP_TO_EDGE;
+        texture.minFilter = pc.FILTER_LINEAR;
+        texture.magFilter = pc.FILTER_LINEAR;
+        textures.set(definition.weapon, texture);
+        const material = spriteMaterials.get(definition.weapon);
+        if (!material) continue;
+        material.diffuseMap = texture;
+        material.emissiveMap = texture;
+        material.opacityMap = texture;
+        material.update();
+    }
     applySelection();
 }
 
 function applySelection() {
-    if (!weapon) return;
+    if (!weapon || !arsenal.weapon) return;
     const crossbow = arsenal.id === 'crossbow';
     const height = crossbow ? 1.62 : 1.36;
     const texture = textures.get(arsenal.id);
@@ -461,7 +463,7 @@ function cleanup() {
     camera = null;
     enemySystem = null;
     app = null;
-    arsenal = new Arsenal();
+    arsenal = new Arsenal([]);
     dungeon = { grid: [], width: 0, height: 0, tileSize: 1, wallHeight: 3.3 };
     bobTime = recoil = switchDip = flashTime = movementBlend = 0;
     moving = false;

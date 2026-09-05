@@ -1,5 +1,3 @@
-import { Arsenal } from './Weapons.js';
-
 const KEY = 'ashen-realms.run.v1';
 const SETTINGS_KEY = 'ashen-realms.settings.v1';
 const MAX_SEED = 2147483647;
@@ -20,7 +18,24 @@ function normalizePlayer(player = {}) {
     return {
         health: bounded(player?.health, 100, 1, 100),
         armor: bounded(player?.armor, 0, 0, 100),
-        weapon: new Arsenal(player?.weapon && typeof player.weapon === 'object' ? player.weapon : {}).getState(),
+        weapon: normalizeWeapon(player?.weapon),
+    };
+}
+
+function normalizeWeapon(weapon = {}) {
+    const source = weapon && typeof weapon === 'object' ? weapon : {};
+    const maxMana = bounded(source.maxMana, 100, 1, 1000);
+    const unlocked = Array.isArray(source.unlocked)
+        ? [...new Set(source.unlocked.filter((id) => typeof id === 'string' && /^[a-zA-Z0-9_-]+$/.test(id)))]
+        : [];
+    return {
+        id: typeof source.id === 'string' ? source.id : null,
+        name: typeof source.name === 'string' ? source.name : null,
+        slot: Number.isInteger(source.slot) ? source.slot : null,
+        mana: bounded(source.mana, maxMana * 0.6, 0, maxMana),
+        maxMana,
+        unlocked,
+        weapons: Array.isArray(source.weapons) ? source.weapons : [],
     };
 }
 
@@ -49,7 +64,7 @@ export function nextChapterCheckpoint(url, result, totals = {}) {
     const previous = normalizeTotals(totals);
     const chapter = normalizeTotals(result);
     player.health = Math.min(100, player.health + 25);
-    player.weapon.mana = Math.min(100, player.weapon.mana + 20);
+    player.weapon.mana = Math.min(player.weapon.maxMana, player.weapon.mana + 20);
     return saveCheckpoint(url, player, { kills: previous.kills + chapter.kills, elapsed: previous.elapsed + chapter.elapsed });
 }
 
@@ -74,8 +89,8 @@ export function formatTime(seconds) {
     return `${Math.floor(safe / 60).toString().padStart(2, '0')}:${(safe % 60).toString().padStart(2, '0')}`;
 }
 
-export function trapPhase(time, offset = 0, type = 'spikes') {
-    const period = type === 'fire' ? 4.8 : 4;
+export function trapPhase(time, offset = 0, type = 'spikes', configuredPeriod = null) {
+    const period = Number(configuredPeriod) > 0 ? Number(configuredPeriod) : 4;
     const phase = ((time + offset) % period + period) % period;
     const warning = phase >= period - 2 && phase < period - 1.1;
     const active = phase >= period - 1.1;

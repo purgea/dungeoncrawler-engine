@@ -12,7 +12,8 @@ const emit = defineEmits(['resume', 'restart', 'next', 'home', 'mute', 'sensitiv
 const overlay = computed(() => ['ready', 'paused', 'dead', 'complete'].includes(props.status));
 const finished = computed(() => props.status === 'complete' && !props.campaign?.nextLevelUrl);
 const title = computed(() => props.status === 'dead' ? 'Claimed by the dark' : finished.value ? 'The curse is broken' : props.status === 'complete' ? 'The seal is broken' : props.hasStarted ? 'Between worlds' : 'The Ruined Marches');
-const subtitle = computed(() => props.status === 'dead' ? 'The stones remember. Rise, and try again.' : finished.value ? 'The final gate stands open. Dawn returns to the Ashen Realms.' : props.status === 'complete' ? 'Another threshold crossed. The darkness retreats.' : 'Recover the three sigils. Unseal the gate. Survive the descent.');
+const subtitle = computed(() => props.status === 'dead' ? 'The stones remember. Rise, and try again.' : finished.value ? 'The final gate stands open. Dawn returns to the Ashen Realms.' : props.status === 'complete' ? 'Another threshold crossed. The darkness retreats.' : `Recover the ${props.requiredSigils} sigils. Unseal the gate. Survive the descent.`);
+const infiniteWeapon = computed(() => Number(props.weapon?.cost ?? 0) === 0);
 </script>
 
 <template>
@@ -27,7 +28,7 @@ const subtitle = computed(() => props.status === 'dead' ? 'The stones remember. 
         </header>
         <div v-if="status === 'playing'" class="crosshair" :class="{ 'crosshair-hit': hitFlash > 0 }"><i /><i /><i /><i /><b /></div>
         <div v-if="target && status === 'playing'" class="enemy-health">
-            <span>{{ target.name || ({ imp: 'Ash fiend', acolyte: 'Hollow acolyte', warden: 'The Iron Warden' }[target.type]) }}</span>
+            <span>{{ target.name || 'Enemy' }}</span>
             <div><i :style="{ width: `${Math.max(0, target.health / target.maxHealth * 100)}%` }" /></div>
         </div>
         <Transition name="notice"><div v-if="message && status === 'playing'" :key="message" class="game-notice" role="status">{{ message }}</div></Transition>
@@ -44,8 +45,8 @@ const subtitle = computed(() => props.status === 'dead' ? 'The stones remember. 
                 <span class="kill-count">{{ kills }} / {{ enemyCount }} SLAIN <i>·</i> {{ formatTime(elapsed) }}</span>
             </div>
             <div class="weapon-block">
-                <div class="weapon-reading"><span>{{ weapon?.name || 'Aether Wand' }}</span><strong>{{ weapon?.id === 'wand' ? '∞' : weapon?.mana ?? 60 }}<small>{{ weapon?.id === 'wand' ? 'AETHER' : 'MANA' }}</small></strong></div>
-                <div class="weapon-slots"><span v-for="(id, index) in ['wand', 'crossbow', 'emberstaff']" :key="id" :class="{ selected: weapon?.id === id, locked: !(weapon?.unlocked || ['wand']).includes(id) }"><kbd>{{ index + 1 }}</kbd>{{ ['WAND', 'CROSSBOW', 'EMBER'][index] }}</span></div>
+                <div class="weapon-reading"><span>{{ weapon?.name || 'Unknown relic' }}</span><strong>{{ infiniteWeapon ? '∞' : weapon?.mana ?? 0 }}<small>{{ infiniteWeapon ? 'AETHER' : 'MANA' }}</small></strong></div>
+                <div class="weapon-slots"><span v-for="entry in (weapon?.weapons || [])" :key="entry.id" :class="{ selected: weapon?.id === entry.id, locked: !entry.unlocked }"><kbd>{{ entry.slot }}</kbd>{{ entry.name }}</span></div>
             </div>
         </footer>
     </div>

@@ -1,13 +1,13 @@
 <script setup>
 import { onBeforeUnmount, watch } from 'vue';
-const props = defineProps({ musicAssets: { type: Array, default: () => [] }, active: Boolean, muted: Boolean });
+const props = defineProps({ musicDefinitions: { type: Array, default: () => [] }, active: Boolean, muted: Boolean });
 let soundtrack = null;
 function sync() {
     if (!props.active || props.muted) { soundtrack?.pause(); return; }
     if (!soundtrack) {
-        const asset = props.musicAssets.find(asset => asset.path_url);
-        if (!asset) return;
-        soundtrack = new Audio(asset.path_url);
+        const definition = props.musicDefinitions.find((entry) => entry.path_url);
+        if (!definition) return;
+        soundtrack = new Audio(definition.path_url);
         soundtrack.loop = true;
         soundtrack.preload = 'none';
         soundtrack.volume = 0.22;

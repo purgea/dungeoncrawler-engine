@@ -1,8 +1,6 @@
 import * as pc from 'playcanvas';
 import { trapPhase } from './RunState.js';
 
-const COLORS = { health: [0.8, 0.12, 0.16], armor: [0.34, 0.66, 0.76], mana: [0.25, 0.48, 1], weapon: [1, 0.64, 0.2], sigil: [0.55, 0.9, 0.72] };
-
 /** Rendered, interactive level objects. The engine owns the simulation clock. */
 export class WorldObjects {
     constructor(app, layout) {
@@ -20,6 +18,9 @@ export class WorldObjects {
         for (const item of layout.pickups || []) this.addPickup(item);
         for (const trap of layout.traps || []) this.addTrap(trap);
         if (layout.exit) this.addPortal(layout.exit);
+    }
+    definition(kind, id) {
+        return (this.layout.definitions?.[kind] || []).find((entry) => entry.id === id) || {};
     }
     position(item) {
         return new pc.Vec3((item.x - this.layout.width / 2) * this.layout.tileSize, item.floor, (item.y - this.layout.height / 2) * this.layout.tileSize);
@@ -48,7 +49,11 @@ export class WorldObjects {
         const position = this.position(data);
         root.setPosition(position);
         this.root.addChild(root);
-        const color = COLORS[data.type] || COLORS.mana;
+        const definition = data.type === 'weapon'
+            ? { ...this.definition('pickup', data.type), ...this.definition('weapon', data.weapon) }
+            : this.definition('pickup', data.type);
+        const item = { ...definition, ...data };
+        const color = item.color || [0.8, 0.8, 0.8];
         const material = this.material(color, 1.8);
         const animated = new pc.Entity('relic');
         animated.setLocalPosition(0, 0.75, 0);
@@ -80,7 +85,7 @@ export class WorldObjects {
                 }
             }
         }
-        this.pickups.push({ ...data, root, animated, position, collected: false });
+        this.pickups.push({ ...item, root, animated, position, collected: false });
     }
     addTrap(data) {
         const root = new pc.Entity(`trap-${data.id}`);
@@ -89,18 +94,21 @@ export class WorldObjects {
         this.root.addChild(root);
         const width = this.layout.tileSize * 0.72;
         this.mesh(root, 'pressure-plate', 'box', this.stone, [0, 0.025, 0], [width, 0.05, width]);
-        const warning = this.material([0.44, 0.12, 0.03], 0.4);
+        const definition = this.definition('trap', data.type);
+        const trapData = { ...definition, ...data };
+        const warning = this.material(trapData.warning_color || [0.44, 0.12, 0.03], 0.4);
         for (const x of [-1, 1]) this.mesh(root, 'trap-rune', 'box', warning, [x * width / 2, 0.07, 0], [0.06, 0.03, width]);
         for (const z of [-1, 1]) this.mesh(root, 'trap-rune', 'box', warning, [0, 0.07, z * width / 2], [width, 0.03, 0.06]);
         const spikes = new pc.Entity('trap-hazard');
         root.addChild(spikes);
-        const hazardMaterial = data.type === 'fire' ? this.material([1, 0.21, 0.015], 3) : this.material([0.48, 0.49, 0.46]);
+        const hazardMaterial = this.material(trapData.color || [0.7, 0.7, 0.7], trapData.emissive ? 3 : 0);
         for (let x = -1; x <= 1; x++) for (let z = -1; z <= 1; z++) {
             this.mesh(root, 'vent', 'cylinder', this.brass, [x * width / 3.5, 0.06, z * width / 3.5], [0.24, 0.05, 0.24]);
-            this.mesh(spikes, 'spike', 'cone', hazardMaterial, [x * width / 3.5, 0.7, z * width / 3.5], [data.type === 'fire' ? 0.4 : 0.15, 1.4, data.type === 'fire' ? 0.4 : 0.15]);
+            const spikeSize = trapData.id === 'fire' ? 0.4 : 0.15;
+            this.mesh(spikes, 'spike', 'cone', hazardMaterial, [x * width / 3.5, 0.7, z * width / 3.5], [spikeSize, 1.4, spikeSize]);
         }
         spikes.setLocalScale(1, 0.01, 1);
-        this.traps.push({ ...data, root, spikes, warning, position, width, lastDamage: -Infinity, wasWarning: false });
+        this.traps.push({ ...trapData, root, spikes, warning, position, width, lastDamage: -Infinity, wasWarning: false });
     }
     addPortal(data) {
         const root = new pc.Entity('exit-portal');
@@ -141,7 +149,7 @@ export class WorldObjects {
             }
         }
         for (const trap of this.traps) {
-            const phase = trapPhase(this.time, trap.phase, trap.type);
+            const phase = trapPhase(this.time, trap.phase, trap.type, trap.period);
             trap.spikes.setLocalScale(1, phase.active ? phase.extension : 0.01, 1);
             trap.warning.emissiveIntensity = phase.active ? 4 : phase.warning ? 1.5 + Math.sin(this.time * 30) : 0.25;
             trap.warning.update();
@@ -160,6 +168,6 @@ export class WorldObjects {
         const p = camera.getPosition();
         return Math.hypot(p.x - this.portal.position.x, p.z - this.portal.position.z) < 2.8 && Math.abs(p.y - 1.55 - this.portal.floor) < 1;
     }
-    markers() { return this.pickups.filter(p => !p.collected).map(({ id, x, y, floor, type }) => ({ id, x, y, floor, type })); }
+    markers() { return this.pickups.filter(p => !p.collected).map(({ id, x, y, floor, type, color }) => ({ id, x, y, floor, type, color })); }
     dispose() { this.root.destroy(); this.materials.forEach(m => m.destroy()); this.pickups = []; this.traps = []; }
 }
