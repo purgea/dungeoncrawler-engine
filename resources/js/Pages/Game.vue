@@ -1,44 +1,38 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, computed, onMounted } from 'vue';
+import { router } from '@inertiajs/vue3';
 import Engine from '../Components/Engine.vue';
 import Music from '../Components/Music.vue';
-
-defineProps({
-    dungeon: {
-        type: Object,
-        required: true,
-    },
-    musicAssets: {
-        type: Array,
-        required: true,
-    },
-    decorationAssets: {
-        type: Array,
-        required: true,
-    },
-    weaponAssets: {
-        type: Array,
-        required: true,
-    },
+import { readCheckpoint, saveCheckpoint, clearCheckpoint, readSettings, campaignLevelUrl, nextChapterCheckpoint } from '../game/RunState.js';
+const props = defineProps({ dungeon: { type: Object, required: true }, campaign: { type: Object, default: () => ({}) }, musicAssets: { type: Array, default: () => [] }, decorationAssets: { type: Array, default: () => [] }, weaponAssets: { type: Array, default: () => [] } });
+const attempt = ref(0), active = ref(false), muted = ref(readSettings().muted), completed = ref(null);
+const checkpoint = ref(readCheckpoint());
+const levelUrl = computed(() => campaignLevelUrl(props.campaign));
+const initialState = computed(() => checkpoint.value?.url === levelUrl.value ? checkpoint.value.player : {});
+const totals = computed(() => checkpoint.value?.url === levelUrl.value ? checkpoint.value.totals : { kills: 0, elapsed: 0 });
+function onCheckpoint(state) { checkpoint.value = saveCheckpoint(levelUrl.value, state, totals.value); }
+function onComplete(state) {
+    if (completed.value) return;
+    completed.value = state;
+    if (props.campaign.nextLevelUrl) nextChapterCheckpoint(props.campaign.nextLevelUrl, state, totals.value);
+    else clearCheckpoint();
+}
+function restart() { active.value = false; completed.value = null; attempt.value++; }
+function nextLevel() {
+    if (!completed.value || !props.campaign.nextLevelUrl) return;
+    router.visit(props.campaign.nextLevelUrl, { preserveState: false });
+}
+function home() { active.value = false; router.visit('/'); }
+onMounted(() => {
+    // Replace ?new=1 and unseeded links so refresh always restores this run.
+    if (levelUrl.value && window.location.pathname + window.location.search !== levelUrl.value) {
+        router.replace({ url: levelUrl.value, preserveState: true, preserveScroll: true });
+    }
 });
-
-const engineComponent = ref(null);
-const musicComponent = ref(null);
-
 </script>
-
 <template>
-    <main class="relative h-screen w-screen overflow-hidden bg-[#050604] text-[#ece7d8]">
-        <Engine
-            ref="engineComponent"
-            :dungeon="dungeon"
-            :decoration-assets="decorationAssets"
-            :weapon-assets="weaponAssets"
-        />
-        <Music ref="musicComponent" :music-assets="musicAssets" />
-        <div class="pointer-events-none absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2">
-            <div class="absolute left-0 top-[7px] h-0.5 w-4 bg-[#ece7d8]/70" />
-            <div class="absolute left-[7px] top-0 h-4 w-0.5 bg-[#ece7d8]/70" />
-        </div>
+    <main class="relative h-screen w-screen overflow-hidden bg-[#050a08] text-[#ece7d8]">
+        <Engine :key="`${dungeon.seed}-${campaign.levelSlug}-${attempt}`" :dungeon="dungeon" :campaign="campaign" :initial-state="initialState" :decoration-assets="decorationAssets" :weapon-assets="weaponAssets" @checkpoint="onCheckpoint" @complete="onComplete" @restart="restart" @next="nextLevel" @home="home" @lock-change="active = $event" @mute-change="muted = $event" />
+        <Music :key="campaign.levelSlug" :music-assets="musicAssets" :active="active" :muted="muted" />
     </main>
 </template>

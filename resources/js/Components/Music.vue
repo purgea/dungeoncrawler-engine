@@ -1,77 +1,21 @@
 <script setup>
-import { onBeforeUnmount, onMounted } from 'vue';
-
-const props = defineProps({
-    musicAssets: {
-        type: Array,
-        required: true,
-    },
-});
-
+import { onBeforeUnmount, watch } from 'vue';
+const props = defineProps({ musicAssets: { type: Array, default: () => [] }, active: Boolean, muted: Boolean });
 let soundtrack = null;
-
-async function start() {
-    const availableAssets = props.musicAssets.filter((asset) => asset.path_url);
-    const selectedAsset = availableAssets[Math.floor(Math.random() * availableAssets.length)];
-    const soundtrackUrl = selectedAsset?.path_url;
-
-    if (!soundtrackUrl) {
-        console.warn('No music assets are available.');
-        return;
-    }
-
-    console.info('Loading dungeon soundtrack.', soundtrackUrl);
-
+function sync() {
+    if (!props.active || props.muted) { soundtrack?.pause(); return; }
     if (!soundtrack) {
-        soundtrack = new Audio(soundtrackUrl);
+        const asset = props.musicAssets.find(asset => asset.path_url);
+        if (!asset) return;
+        soundtrack = new Audio(asset.path_url);
         soundtrack.loop = true;
-        soundtrack.preload = 'auto';
-        soundtrack.volume = 1;
-        soundtrack.addEventListener('canplaythrough', () => {
-            console.info('Dungeon soundtrack is ready to play.', soundtrackUrl);
-        }, { once: true });
-        soundtrack.addEventListener('error', () => {
-            console.error('Dungeon soundtrack failed to load.', {
-                source: soundtrack?.currentSrc || soundtrackUrl,
-                networkState: soundtrack?.networkState,
-                readyState: soundtrack?.readyState,
-                mediaError: soundtrack?.error,
-            });
-        });
+        soundtrack.preload = 'none';
+        soundtrack.volume = 0.22;
     }
-
-    try {
-        console.info('Starting dungeon soundtrack.', soundtrackUrl);
-        await soundtrack.play();
-        console.info('Dungeon soundtrack is playing.');
-    } catch (error) {
-        console.error('Unable to play dungeon soundtrack.', error);
-        throw error;
-    }
+    // Browsers may withhold autoplay; retry on the next deliberate resume.
+    soundtrack.play().catch(() => {});
 }
-
-function stop() {
-    if (!soundtrack) {
-        return;
-    }
-
-    soundtrack.pause();
-    soundtrack.currentTime = 0;
-}
-
-onMounted(start);
-
-onBeforeUnmount(() => {
-    stop();
-    soundtrack = null;
-});
-
-defineExpose({
-    start,
-    stop,
-});
+watch(() => [props.active, props.muted], sync, { immediate: true });
+onBeforeUnmount(() => { soundtrack?.pause(); if (soundtrack) soundtrack.src = ''; soundtrack = null; });
 </script>
-
-<template>
-    <div hidden />
-</template>
+<template><div hidden /></template>

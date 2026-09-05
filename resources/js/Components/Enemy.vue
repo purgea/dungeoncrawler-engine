@@ -1,587 +1,493 @@
 <script setup>
 import { onBeforeUnmount } from 'vue';
 import * as pc from 'playcanvas';
-import { FiniteStateMachine } from '../ai/FiniteStateMachine';
-import {
-    canTraverseTiles,
-    getRampCells,
-    isWalkableWorldPosition,
-    surfaceElevation as getSurfaceElevation,
-    tileAtWorldPosition,
-} from '../ai/GridCollision';
-import { GridPathfinder } from '../ai/GridPathfinder';
-import { colorFromRgb, falloffModeFromName } from '../lighting';
+import { getRampCells, isWalkableWorldPosition, surfaceElevation, tileAtWorldPosition } from '../ai/GridCollision.js';
+import { GridPathfinder } from '../ai/GridPathfinder.js';
+import { pointOnSegment, traceDungeonSegment } from '../game/Combat.js';
+import { ENEMY_TYPES, nearestEnemyHit, segmentBodyIntersection } from '../game/EnemyCombat.js';
+import { createEnemyFrame } from '../game/EnemySprites.js';
 
-const emit = defineEmits(['state-change', 'attack']);
-
-const enemyConfig = {
-    sightRange: 34,
-    attackRange: 2.3,
-    moveSpeed: 4.8,
-    attackSpeed: 0.85,
-    damage: 8,
-    rangedDecisionDistance: 8,
-    projectileSpeed: 18,
-    projectileDamage: 5,
-    projectileCooldown: 1.1,
-    radius: 0.48,
-    height: 1.65,
-};
-
+const emit = defineEmits(['state-change', 'attack', 'hit', 'kill']);
 let app = null;
 let player = null;
-let lighting = null;
-let collisionGrid = [];
-let rampCells = [];
-let dungeonWidth = 0;
-let dungeonHeight = 0;
-let tileSize = 1;
+let dungeon = null;
+let ramps = [];
 let pathfinder = null;
-let path = [];
-let pathIndex = 0;
-let pathTargetKey = null;
-let pathRepathTimer = 0;
-let enemy = null;
-let sprite = null;
-let spriteMaterials = [];
-let frameTextures = [];
-let animationTime = 0;
-let animationFrame = 0;
-let attackCooldown = 0;
-let rangedDecisionCooldown = 0;
-let lastRangedDecisionKey = null;
+let elapsed = 0;
+let killCount = 0;
+let nextPathSearch = 0;
+const enemies = [];
+const speciesAssets = new Map();
 const projectiles = new Set();
-let stateMachine = null;
+const particles = new Set();
+const sharedMaterials = [];
+let projectileMaterial = null;
+let projectileHaloMaterial = null;
+let bloodMaterial = null;
+let shadowMaterial = null;
 
-function randomBetween(min, max) {
-    return min + Math.random() * (max - min);
+function solidMaterial(color, glow = 0, opacity = 1) {
+    const material = new pc.StandardMaterial();
+    material.diffuse.set(...color);
+    material.emissive.set(...color);
+    material.emissiveIntensity = glow;
+    material.opacity = opacity;
+    if (opacity < 1) {
+        material.blendType = pc.BLEND_NORMAL;
+        material.depthWrite = false;
+    }
+    material.update();
+    sharedMaterials.push(material);
+    return material;
 }
 
-function createFrameCanvas(frame, hue) {
-    const canvas = document.createElement('canvas');
-    canvas.width = 128;
-    canvas.height = 128;
-    const ctx = canvas.getContext('2d');
-    const bob = [0, 3, 1, -2][frame];
-    const squash = [1, 0.96, 0.92, 0.96][frame];
-
-    ctx.clearRect(0, 0, 128, 128);
-    ctx.save();
-    ctx.translate(64, 72 + bob);
-    ctx.scale(1, squash);
-
-    ctx.shadowColor = `hsla(${hue}, 100%, 60%, ${lighting.materials.enemy.sprite_shadow_alpha})`;
-    ctx.shadowBlur = lighting.materials.enemy.sprite_shadow_blur;
-    ctx.fillStyle = `hsl(${hue} 62% 42%)`;
-    ctx.beginPath();
-    ctx.moveTo(-31, 36);
-    ctx.quadraticCurveTo(-36, -13, -24, -37);
-    ctx.quadraticCurveTo(0, -53, 24, -37);
-    ctx.quadraticCurveTo(36, -13, 31, 36);
-    ctx.quadraticCurveTo(0, 52, -31, 36);
-    ctx.fill();
-
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = `hsl(${hue} 42% 25%)`;
-    ctx.beginPath();
-    ctx.moveTo(-23, -34);
-    ctx.lineTo(-18, -58);
-    ctx.lineTo(-4, -40);
-    ctx.moveTo(23, -34);
-    ctx.lineTo(18, -58);
-    ctx.lineTo(4, -40);
-    ctx.fill();
-
-    ctx.fillStyle = '#e6d8a0';
-    ctx.beginPath();
-    ctx.ellipse(-13, -15, 8, 11, -0.1, 0, Math.PI * 2);
-    ctx.ellipse(13, -15, 8, 11, 0.1, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#24131a';
-    ctx.beginPath();
-    ctx.ellipse(-11 + frame % 2, -13, 3, 6, 0, 0, Math.PI * 2);
-    ctx.ellipse(11 + frame % 2, -13, 3, 6, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.strokeStyle = '#24131a';
-    ctx.lineWidth = 4;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.arc(0, 7, 13, 0.15, Math.PI - 0.15);
-    ctx.stroke();
-    ctx.restore();
-
-    return canvas;
-}
-
-function createProceduralFrames() {
-    const hue = Math.floor(randomBetween(0, 360));
-    return [0, 1, 2, 3].map((frame) => createFrameCanvas(frame, hue));
-}
-
-function createMaterial(texture) {
+function createSpriteMaterial(texture, effect) {
     const material = new pc.StandardMaterial();
     material.diffuseMap = texture;
     material.opacityMap = texture;
     material.opacityMapChannel = 'a';
-    material.diffuse.set(1, 1, 1);
-    material.emissive.set(...lighting.materials.enemy.emissive);
-    material.emissiveIntensity = lighting.materials.enemy.emissive_intensity;
-    material.alphaTest = 0.05;
-    material.blendType = pc.BLEND_NORMAL;
-    material.depthWrite = false;
+    material.emissiveMap = effect === 'hit' ? null : texture;
+    material.diffuse.set(0.65, 0.65, 0.65);
+    material.emissive.set(...(effect === 'hit' ? [1, 0.42, 0.22] : effect === 'attack' ? [1, 0.8, 0.55] : [0.75, 0.75, 0.75]));
+    material.emissiveIntensity = effect === 'hit' ? 2.8 : effect === 'attack' ? 1.7 : 0.85;
+    material.alphaTest = 0.45;
     material.cull = pc.CULLFACE_NONE;
+    material.depthWrite = true;
     material.update();
     return material;
 }
 
-function createProjectileMaterial() {
-    const material = new pc.StandardMaterial();
-    material.diffuse.set(0.45, 0.14, 1);
-    material.emissive.set(...lighting.materials.projectile.emissive);
-    material.emissiveIntensity = lighting.materials.projectile.emissive_intensity;
-    material.update();
-    return material;
-}
-
-function cellAtWorldPosition(x, z) {
-    return tileAtWorldPosition(x, z, collisionGrid, dungeonWidth, dungeonHeight, tileSize);
-}
-
-function isWalkable(x, z, fromPosition) {
-    const fromTile = fromPosition ? cellAtWorldPosition(fromPosition.x, fromPosition.z) : null;
-
-    return isWalkableWorldPosition({
-        x,
-        z,
-        grid: collisionGrid,
-        width: dungeonWidth,
-        height: dungeonHeight,
-        tileSize,
-        radius: enemyConfig.radius,
-        ramps: rampCells,
-        fromTile,
-        fromPosition,
-    });
-}
-
-function hasLineOfSight(from, to) {
-    const distance = Math.hypot(to.x - from.x, to.z - from.z);
-    if (distance > enemyConfig.sightRange) {
-        return false;
-    }
-
-    const samples = Math.max(2, Math.ceil(distance / Math.max(tileSize * 0.35, 0.5)));
-    const fromTile = cellAtWorldPosition(from.x, from.z);
-    const toTile = cellAtWorldPosition(to.x, to.z);
-    if (!fromTile.cell?.walkable || !toTile.cell?.walkable) {
-        return false;
-    }
-
-    let previousTile = fromTile;
-    for (let index = 1; index < samples; index += 1) {
-        const progress = index / samples;
-        const tile = cellAtWorldPosition(
-            from.x + (to.x - from.x) * progress,
-            from.z + (to.z - from.z) * progress,
-        );
-        if (!tile.cell?.walkable) {
-            return false;
-        }
-        if ((tile.x !== previousTile.x || tile.y !== previousTile.y) &&
-            !canTraverseTiles(collisionGrid, previousTile, tile)) {
-            return false;
-        }
-        previousTile = tile;
-    }
-
-    return (toTile.x === previousTile.x && toTile.y === previousTile.y) ||
-        canTraverseTiles(collisionGrid, previousTile, toTile);
-}
-
-function playerPosition() {
-    const cameraPosition = player?.getCamera?.()?.getLocalPosition?.();
-    return cameraPosition ? { x: cameraPosition.x, z: cameraPosition.z } : null;
-}
-
-function distanceToPlayer(position = enemy?.getPosition?.()) {
-    const target = playerPosition();
-    return target && position ? Math.hypot(target.x - position.x, target.z - position.z) : Infinity;
-}
-
-function canSeePlayer() {
-    const target = playerPosition();
-    return Boolean(target && enemy && hasLineOfSight(enemy.getPosition(), target));
-}
-
-function tileKey(tile) {
-    return tile ? `${tile.x}:${tile.y}` : null;
-}
-
-function worldPositionForTile(tile) {
-    return {
-        x: (tile.x - dungeonWidth / 2) * tileSize,
-        z: (tile.y - dungeonHeight / 2) * tileSize,
-    };
-}
-
-function refreshPath(force = false) {
-    const enemyPosition = enemy.getPosition();
-    const enemyTile = cellAtWorldPosition(enemyPosition.x, enemyPosition.z);
-    const target = playerPosition();
-    const playerTile = target ? cellAtWorldPosition(target.x, target.z) : null;
-    const nextTargetKey = tileKey(playerTile);
-
-    if (!playerTile?.cell || !enemyTile?.cell || !pathfinder) {
-        path = [];
-        pathIndex = 0;
-        pathTargetKey = null;
-        return;
-    }
-
-    if (!force && pathTargetKey === nextTargetKey && pathRepathTimer > 0) {
-        return;
-    }
-
-    path = pathfinder.findPath(enemyTile, playerTile);
-    pathIndex = path.length > 1 ? 1 : 0;
-    pathTargetKey = nextTargetKey;
-    pathRepathTimer = 0.25;
-}
-
-function moveTowardPlayer(dt) {
-    const target = playerPosition();
-    const position = enemy?.getPosition();
-    if (!target || !position) {
-        return;
-    }
-
-    pathRepathTimer = Math.max(0, pathRepathTimer - dt);
-    refreshPath();
-    if (!path.length) {
-        return;
-    }
-
-    if (considerRangedAction(dt)) {
-        return;
-    }
-
-    const isFinalWaypoint = pathIndex >= path.length - 1;
-    const waypoint = isFinalWaypoint ? target : worldPositionForTile(path[pathIndex]);
-    const deltaX = waypoint.x - position.x;
-    const deltaZ = waypoint.z - position.z;
-    const distance = Math.hypot(deltaX, deltaZ);
-    if (distance < 0.001) {
-        if (!isFinalWaypoint) {
-            pathIndex += 1;
-        }
-        return;
-    }
-
-    const step = Math.min(enemyConfig.moveSpeed * dt, distance);
-    const nextX = position.x + deltaX / distance * step;
-    const nextZ = position.z + deltaZ / distance * step;
-    let movedX = position.x;
-    let movedZ = position.z;
-
-    if (isWalkable(nextX, position.z, position)) {
-        movedX = nextX;
-    }
-    if (isWalkable(movedX, nextZ, { x: movedX, z: position.z })) {
-        movedZ = nextZ;
-    }
-
-    const movedDistance = Math.hypot(movedX - position.x, movedZ - position.z);
-    if (movedDistance < 0.001) {
-        // A stale waypoint or dynamic obstruction should cause a fresh search.
-        pathRepathTimer = 0;
-        refreshPath(true);
-    } else if (!isFinalWaypoint && Math.hypot(waypoint.x - movedX, waypoint.z - movedZ) < 0.12) {
-        pathIndex += 1;
-    }
-
-    const elevation = getSurfaceElevation(
-        movedX,
-        movedZ,
-        collisionGrid,
-        dungeonWidth,
-        dungeonHeight,
-        tileSize,
-    );
-    enemy.setPosition(movedX, elevation ?? position.y, movedZ);
-    enemy.lookAt(target.x, enemy.getPosition().y, target.z);
-}
-
-function shootProjectile() {
-    const target = playerPosition();
-    const cameraPosition = player?.getCamera?.()?.getLocalPosition?.();
-    const origin = enemy?.getPosition?.()?.clone();
-    if (!target || !origin) {
-        return false;
-    }
-
-    origin.y += 1.05;
-    const direction = new pc.Vec3(
-        target.x - origin.x,
-        (cameraPosition?.y ?? origin.y) - origin.y,
-        target.z - origin.z,
-    ).normalize();
-    const projectile = new pc.Entity('enemy-projectile');
-    projectile.addComponent('render', {
-        type: 'sphere',
-        material: createProjectileMaterial(),
-    });
-    projectile.setPosition(origin);
-    projectile.setLocalScale(0.09, 0.09, 0.09);
-    app.root.addChild(projectile);
-    projectiles.add({ projectile, direction, age: 0 });
-    emit('attack', { damage: enemyConfig.projectileDamage, ranged: true });
-
-    return true;
-}
-
-function updateProjectiles(dt) {
-    for (const active of projectiles) {
-        active.age += dt;
-        const step = active.direction.clone().mulScalar(enemyConfig.projectileSpeed * dt);
-        const previous = active.projectile.getPosition().clone();
-        const next = previous.clone().add(step);
-        const target = playerPosition();
-        const hitPlayer = target && Math.hypot(next.x - target.x, next.z - target.z) < 0.55;
-        const previousTile = cellAtWorldPosition(previous.x, previous.z);
-        const nextTile = cellAtWorldPosition(next.x, next.z);
-        const crossedWall = (previousTile.x !== nextTile.x || previousTile.y !== nextTile.y) &&
-            !canTraverseTiles(collisionGrid, previousTile, nextTile);
-        const hitWall = !nextTile.cell?.walkable || crossedWall;
-
-        if (hitPlayer) {
-            player?.takeDamage?.(enemyConfig.projectileDamage);
-            active.projectile.destroy();
-            projectiles.delete(active);
-            continue;
-        }
-
-        if (hitWall || active.age > 3) {
-            active.projectile.destroy();
-            projectiles.delete(active);
-            continue;
-        }
-
-        active.projectile.setPosition(next);
-    }
-}
-
-function considerRangedAction(dt) {
-    rangedDecisionCooldown = Math.max(0, rangedDecisionCooldown - dt);
-    if (rangedDecisionCooldown > 0) {
-        return true;
-    }
-
-    const position = enemy?.getPosition?.();
-    const target = playerPosition();
-    const waypoint = path[pathIndex];
-    if (!position || !target || !waypoint) {
-        return false;
-    }
-
-    const currentTile = cellAtWorldPosition(position.x, position.z);
-    const decisionKey = `${tileKey(currentTile)}>${tileKey(waypoint)}:${pathTargetKey}`;
-    if (decisionKey === lastRangedDecisionKey) {
-        return false;
-    }
-    lastRangedDecisionKey = decisionKey;
-
-    const distance = Math.hypot(target.x - position.x, target.z - position.z);
-    if (distance <= enemyConfig.rangedDecisionDistance || !canSeePlayer()) {
-        return false;
-    }
-
-    if (Math.random() >= 0.2 || !shootProjectile()) {
-        return false;
-    }
-
-    // A shot consumes this grid opportunity. Re-evaluate after the cooldown.
-    lastRangedDecisionKey = null;
-    rangedDecisionCooldown = enemyConfig.projectileCooldown;
-    return true;
-}
-
-function setAnimation(name, dt) {
-    animationTime += dt;
-    const frameDuration = name === 'walk' ? 0.12 : name === 'attack' ? 0.1 : 0.28;
-    const nextFrame = Math.floor(animationTime / frameDuration) % frameTextures.length;
-    if (nextFrame !== animationFrame) {
-        animationFrame = nextFrame;
-        spriteMaterials[animationFrame].diffuseMap = frameTextures[animationFrame];
-        spriteMaterials[animationFrame].opacityMap = frameTextures[animationFrame];
-        spriteMaterials[animationFrame].update();
-        sprite.render.material = spriteMaterials[animationFrame];
-    }
-    sprite.setLocalScale(
-        1.15,
-        1 + Math.sin(animationTime * 8) * (name === 'idle' ? 0.025 : 0.04),
-        enemyConfig.height,
-    );
-}
-
-function attackPlayer() {
-    if (attackCooldown > 0 || distanceToPlayer() > enemyConfig.attackRange || !canSeePlayer()) {
-        return;
-    }
-
-    attackCooldown = 1 / enemyConfig.attackSpeed;
-    player?.takeDamage?.(enemyConfig.damage);
-    emit('attack', { damage: enemyConfig.damage });
-}
-
-function createStateMachine() {
-    const context = {};
-    stateMachine = new FiniteStateMachine({
-        IDLE: {
-            enter: () => emit('state-change', 'IDLE'),
-            update: () => (canSeePlayer() ? 'CHASE' : null),
-        },
-        CHASE: {
-            enter: () => emit('state-change', 'CHASE'),
-            update: (stateContext, dt) => {
-                if (!playerPosition() || distanceToPlayer() > enemyConfig.sightRange) {
-                    return 'IDLE';
-                }
-                if (distanceToPlayer() <= enemyConfig.attackRange && canSeePlayer()) {
-                    return 'ATTACK';
-                }
-                moveTowardPlayer(dt);
-                setAnimation('walk', dt);
-                return null;
-            },
-        },
-        ATTACK: {
-            enter: () => emit('state-change', 'ATTACK'),
-            update: (stateContext, dt) => {
-                attackCooldown = Math.max(0, attackCooldown - dt);
-                if (!playerPosition() || distanceToPlayer() > enemyConfig.sightRange) {
-                    return 'IDLE';
-                }
-                if (distanceToPlayer() > enemyConfig.attackRange * 1.15) {
-                    return 'CHASE';
-                }
-                if (!canSeePlayer()) {
-                    return 'CHASE';
-                }
-                enemy.lookAt(playerPosition().x, enemy.getPosition().y, playerPosition().z);
-                attackPlayer();
-                setAnimation('attack', dt);
-                return null;
-            },
-        },
-    }, 'IDLE', context);
-}
-
-function setupEnemy(appInstance, playerComponent, spawnPoint, dungeon) {
-    app = appInstance;
-    player = playerComponent;
-    collisionGrid = dungeon.grid;
-    rampCells = getRampCells(collisionGrid);
-    dungeonWidth = dungeon.width;
-    dungeonHeight = dungeon.height;
-    tileSize = dungeon.tileSize;
-    lighting = dungeon.lighting;
-    pathfinder = new GridPathfinder(collisionGrid, dungeonWidth, dungeonHeight);
-    path = [];
-    pathIndex = 0;
-    pathTargetKey = null;
-    pathRepathTimer = 0;
-    rangedDecisionCooldown = 0;
-    lastRangedDecisionKey = null;
-    frameTextures = createProceduralFrames().map((canvas, index) => {
+function assetsFor(type) {
+    if (speciesAssets.has(type)) return speciesAssets.get(type);
+    const textures = [0, 1, 2, 3].map((frame) => {
+        const canvas = createEnemyFrame(type, frame);
         const texture = new pc.Texture(app.graphicsDevice, {
-            width: canvas.width,
-            height: canvas.height,
-            format: pc.PIXELFORMAT_R8_G8_B8_A8,
-            mipmaps: true,
+            name: `enemy-${type}-${frame}`, width: 64, height: 96,
+            format: pc.PIXELFORMAT_R8_G8_B8_A8, mipmaps: false,
+            minFilter: pc.FILTER_NEAREST, magFilter: pc.FILTER_NEAREST,
+            addressU: pc.ADDRESS_CLAMP_TO_EDGE, addressV: pc.ADDRESS_CLAMP_TO_EDGE,
         });
-        texture.addressU = pc.ADDRESS_CLAMP_TO_EDGE;
-        texture.addressV = pc.ADDRESS_CLAMP_TO_EDGE;
-        texture.minFilter = pc.FILTER_LINEAR_MIPMAP_LINEAR;
-        texture.magFilter = pc.FILTER_LINEAR;
         texture.setSource(canvas);
         return texture;
     });
-    spriteMaterials = frameTextures.map(createMaterial);
-
-    enemy = new pc.Entity('procedural-enemy');
-    enemy.setPosition(spawnPoint.x, spawnPoint.y, spawnPoint.z);
-
-    sprite = new pc.Entity('procedural-enemy-sprite');
-    sprite.addComponent('render', { type: 'plane', material: spriteMaterials[0] });
-    sprite.setLocalScale(1.15, 1, enemyConfig.height);
-    sprite.setLocalEulerAngles(90, 0, 0);
-    sprite.setLocalPosition(0, enemyConfig.height / 2, 0);
-    enemy.addChild(sprite);
-
-    const light = new pc.Entity('procedural-enemy-light');
-    const enemyLightConfig = lighting.enemy.light;
-    light.addComponent('light', {
-        type: 'omni',
-        color: colorFromRgb(enemyLightConfig.color),
-        intensity: enemyLightConfig.intensity,
-        range: Math.max(tileSize * enemyLightConfig.range_tiles, 1),
-        falloffMode: falloffModeFromName(enemyLightConfig.falloff),
-        castShadows: enemyLightConfig.cast_shadows,
-    });
-    light.setLocalPosition(0, 1.05, 0);
-    enemy.addChild(light);
-
-    app.root.addChild(enemy);
-    createStateMachine();
-    app.on('update', updateEnemy);
+    const assets = {
+        textures,
+        normal: textures.map((texture) => createSpriteMaterial(texture, 'normal')),
+        hit: textures.map((texture) => createSpriteMaterial(texture, 'hit')),
+        attack: textures.map((texture) => createSpriteMaterial(texture, 'attack')),
+    };
+    speciesAssets.set(type, assets);
+    return assets;
 }
 
-function updateEnemy(dt) {
-    if (!stateMachine || !enemy) {
+function bodyPosition(actor) {
+    const position = actor.entity.getPosition();
+    return { x: position.x, y: position.y, z: position.z };
+}
+
+function tileAt(x, z) {
+    return tileAtWorldPosition(x, z, dungeon.grid, dungeon.width, dungeon.height, dungeon.tileSize);
+}
+
+function targetPosition() {
+    const position = player?.getCamera?.()?.getPosition?.();
+    return position ? { x: position.x, y: position.y, z: position.z } : null;
+}
+
+function chestPosition(actor) {
+    const position = bodyPosition(actor);
+    position.y += actor.config.height * 0.63;
+    return position;
+}
+
+function canSee(actor, target) {
+    const eye = chestPosition(actor);
+    return Math.hypot(target.x - eye.x, target.z - eye.z) <= actor.config.sight &&
+        traceDungeonSegment(eye, target, dungeon) === null;
+}
+
+function setState(actor, state) {
+    if (actor.state === state) return;
+    actor.state = state;
+    emit('state-change', { id: actor.id, type: actor.type, state });
+}
+
+function createEnemy(placement, index) {
+    const type = ENEMY_TYPES[placement.type] ? placement.type : 'imp';
+    const config = ENEMY_TYPES[type];
+    const assets = assetsFor(type);
+    // Placements are map coordinates. The single-enemy compatibility entry
+    // point marks world positions explicitly instead of guessing from values.
+    const x = placement.world ? placement.x : (placement.x - dungeon.width / 2) * dungeon.tileSize;
+    const z = placement.world ? placement.z : (placement.y - dungeon.height / 2) * dungeon.tileSize;
+    const y = surfaceElevation(x, z, dungeon.grid, dungeon.width, dungeon.height, dungeon.tileSize);
+    if (y === null) return;
+    const entity = new pc.Entity(`enemy-${type}-${placement.id ?? index}`);
+    entity.setPosition(x, y, z);
+    const sprite = new pc.Entity('enemy-billboard');
+    sprite.addComponent('render', { type: 'plane', material: assets.normal[0], castShadows: false });
+    sprite.setLocalEulerAngles(90, 0, 0);
+    sprite.setLocalScale(config.width, 1, config.height);
+    sprite.setLocalPosition(0, config.height / 2, 0);
+    entity.addChild(sprite);
+    const shadow = new pc.Entity('enemy-shadow');
+    shadow.addComponent('render', { type: 'cylinder', material: shadowMaterial, castShadows: false });
+    shadow.setLocalScale(config.radius * 2.1, 0.012, config.radius * 1.4);
+    shadow.setLocalPosition(0, 0.025, 0);
+    entity.addChild(shadow);
+    const charge = new pc.Entity('spell-charge');
+    charge.addComponent('render', { type: 'sphere', material: projectileMaterial, castShadows: false });
+    charge.setLocalPosition(0.35, config.height * 0.63, -0.2);
+    charge.enabled = false;
+    entity.addChild(charge);
+    app.root.addChild(entity);
+    enemies.push({
+        id: placement.id ?? `enemy-${index}`, type, config, assets, entity, sprite, shadow, charge,
+        health: config.health, state: 'IDLE', phase: index * 0.73,
+        flash: 0, stagger: 0, cooldown: 0.5 + (index % 4) * 0.16, windup: 0,
+        sightTimer: (index % 5) * 0.045, visible: false, awareness: 0, lastSeen: null,
+        path: [], pathIndex: 0, repath: (index % 5) * 0.1, deathAge: 0,
+    });
+}
+
+function setupEnemies(appInstance, playerComponent, placements, config) {
+    cleanup();
+    app = appInstance;
+    player = playerComponent;
+    dungeon = { ...config, wallHeight: config.wallHeight ?? 3.3 };
+    ramps = getRampCells(dungeon.grid);
+    pathfinder = new GridPathfinder(dungeon.grid, dungeon.width, dungeon.height);
+    projectileMaterial = solidMaterial([0.2, 1, 0.67], 4);
+    projectileHaloMaterial = solidMaterial([0.08, 0.7, 0.42], 2, 0.25);
+    bloodMaterial = solidMaterial([0.6, 0.055, 0.025], 0.45);
+    shadowMaterial = solidMaterial([0.025, 0.016, 0.018], 0, 0.45);
+    (placements ?? []).forEach(createEnemy);
+    app.on('update', updateEnemies);
+    return getStats();
+}
+
+function setupEnemy(appInstance, playerComponent, spawnPoint, config) {
+    return setupEnemies(appInstance, playerComponent, [{ ...spawnPoint, id: 'enemy-0', type: 'imp', world: true }], config);
+}
+
+function canWalk(actor, x, z, from) {
+    return isWalkableWorldPosition({
+        x, z, grid: dungeon.grid, width: dungeon.width, height: dungeon.height,
+        tileSize: dungeon.tileSize, radius: actor.config.radius, ramps,
+        fromTile: tileAt(from.x, from.z), fromPosition: from,
+    });
+}
+
+function moveActor(actor, destination, dt, speedMultiplier = 1) {
+    const position = bodyPosition(actor);
+    let dx = destination.x - position.x;
+    let dz = destination.z - position.z;
+    const distance = Math.hypot(dx, dz);
+    if (distance < 0.05) return;
+    dx /= distance;
+    dz /= distance;
+    // A little separation avoids stacks of monsters occupying one hitbox.
+    let avoidX = 0;
+    let avoidZ = 0;
+    for (const other of enemies) {
+        if (other === actor || other.health <= 0) continue;
+        const otherPosition = other.entity.getPosition();
+        const separation = Math.hypot(position.x - otherPosition.x, position.z - otherPosition.z);
+        const minimum = actor.config.radius + other.config.radius + 0.12;
+        if (separation < minimum && separation > 0.01 && Math.abs(position.y - otherPosition.y) < 1) {
+            avoidX += (position.x - otherPosition.x) / separation * (minimum - separation) * 1.4;
+            avoidZ += (position.z - otherPosition.z) / separation * (minimum - separation) * 1.4;
+        }
+    }
+    const step = Math.min(actor.config.speed * speedMultiplier * dt, distance);
+    const nextX = position.x + (dx + avoidX) * step;
+    const nextZ = position.z + (dz + avoidZ) * step;
+    let x = position.x;
+    let z = position.z;
+    if (canWalk(actor, nextX, z, position)) x = nextX;
+    if (canWalk(actor, x, nextZ, { x, z: position.z })) z = nextZ;
+    const elevation = surfaceElevation(x, z, dungeon.grid, dungeon.width, dungeon.height, dungeon.tileSize);
+    actor.entity.setPosition(x, elevation ?? position.y, z);
+}
+
+function chase(actor, target, dt) {
+    actor.repath -= dt;
+    if (actor.repath <= 0 && elapsed >= nextPathSearch) {
+        const position = actor.entity.getPosition();
+        actor.path = pathfinder.findPath(tileAt(position.x, position.z), tileAt(target.x, target.z));
+        actor.pathIndex = actor.path.length > 1 ? 1 : 0;
+        actor.repath = 0.8 + (actor.phase % 0.4);
+        // At most one A* search per frame, even after a large group wakes up.
+        nextPathSearch = elapsed + 0.001;
+    }
+    if (!actor.path.length) return;
+    const waypoint = actor.path[actor.pathIndex];
+    const final = actor.pathIndex >= actor.path.length - 1;
+    const destination = final ? target : {
+        x: (waypoint.x - dungeon.width / 2) * dungeon.tileSize,
+        z: (waypoint.y - dungeon.height / 2) * dungeon.tileSize,
+    };
+    moveActor(actor, destination, dt);
+    const position = actor.entity.getPosition();
+    if (!final && Math.hypot(position.x - destination.x, position.z - destination.z) < 0.22) actor.pathIndex++;
+}
+
+function beginAttack(actor, target) {
+    actor.windup = actor.config.windup;
+    actor.aim = { ...target };
+    actor.charge.enabled = actor.type === 'acolyte';
+    setState(actor, 'ATTACK');
+    emit('attack', { id: actor.id, type: actor.type, ranged: actor.type === 'acolyte', stage: 'windup', damage: actor.config.damage });
+}
+
+function releaseAttack(actor, target) {
+    actor.charge.enabled = false;
+    actor.cooldown = actor.config.cooldown;
+    if (actor.type === 'acolyte') {
+        shootProjectile(actor);
+    } else {
+        const position = actor.entity.getPosition();
+        const inRange = Math.hypot(target.x - position.x, target.z - position.z) <= actor.config.range + 0.2;
+        if (inRange && Math.abs(target.y - 1.55 - position.y) < 1.2 && canSee(actor, target)) {
+            player?.takeDamage?.(actor.config.damage);
+            emit('attack', { id: actor.id, type: actor.type, stage: 'hit', ranged: false, damage: actor.config.damage });
+        }
+    }
+    setState(actor, 'CHASE');
+}
+
+function shootProjectile(actor) {
+    const origin = chestPosition(actor);
+    const direction = new pc.Vec3(actor.aim.x - origin.x, actor.aim.y - 0.2 - origin.y, actor.aim.z - origin.z).normalize();
+    const entity = new pc.Entity('acolyte-soul-bolt');
+    entity.addComponent('render', { type: 'sphere', material: projectileMaterial, castShadows: false });
+    entity.setPosition(origin.x, origin.y, origin.z);
+    entity.setLocalScale(0.3, 0.3, 0.3);
+    const halo = new pc.Entity('soul-bolt-halo');
+    halo.addComponent('render', { type: 'sphere', material: projectileHaloMaterial, castShadows: false });
+    halo.setLocalScale(2, 2, 2);
+    entity.addChild(halo);
+    app.root.addChild(entity);
+    projectiles.add({ entity, direction, age: 0, trailTimer: 0, speed: actor.config.projectileSpeed, damage: actor.config.damage, owner: actor.id });
+    emit('attack', { id: actor.id, type: actor.type, stage: 'release', ranged: true, damage: actor.config.damage });
+}
+
+function burst(position, material, count = 6, power = 1) {
+    for (let index = 0; index < count && particles.size < 96; index++) {
+        const entity = new pc.Entity('enemy-impact');
+        entity.addComponent('render', { type: 'box', material, castShadows: false });
+        entity.setPosition(position.x, position.y, position.z);
+        const size = (0.035 + Math.random() * 0.045) * power;
+        entity.setLocalScale(size, size, size);
+        app.root.addChild(entity);
+        particles.add({ entity, age: 0, life: 0.28 + Math.random() * 0.28, size,
+            velocity: new pc.Vec3((Math.random() - 0.5) * 3 * power, Math.random() * 2 * power, (Math.random() - 0.5) * 3 * power) });
+    }
+}
+
+function updateProjectiles(dt, target) {
+    const feet = { x: target.x, y: target.y - 1.55, z: target.z };
+    for (const projectile of projectiles) {
+        const old = projectile.entity.getPosition();
+        const from = { x: old.x, y: old.y, z: old.z };
+        const to = { x: from.x + projectile.direction.x * projectile.speed * dt,
+            y: from.y + projectile.direction.y * projectile.speed * dt,
+            z: from.z + projectile.direction.z * projectile.speed * dt };
+        projectile.age += dt;
+        projectile.trailTimer -= dt;
+        const wall = traceDungeonSegment(from, to, dungeon, 0.15);
+        const playerHit = segmentBodyIntersection(from, to, feet, 0.3, 1.72, 0.15);
+        const hitPlayer = playerHit !== null && (!wall || playerHit < wall.t);
+        if (hitPlayer || wall || projectile.age > 4.5) {
+            if (hitPlayer) {
+                player?.takeDamage?.(projectile.damage);
+                emit('attack', { id: projectile.owner, type: 'acolyte', stage: 'hit', ranged: true, damage: projectile.damage });
+            }
+            burst(hitPlayer ? pointOnSegment(from, to, playerHit) : wall?.position ?? to, projectileMaterial, 5);
+            projectile.entity.destroy();
+            projectiles.delete(projectile);
+        } else {
+            projectile.entity.setPosition(to.x, to.y, to.z);
+            const pulse = 0.3 + Math.sin(elapsed * 22) * 0.035;
+            projectile.entity.setLocalScale(pulse, pulse, pulse);
+            if (projectile.trailTimer <= 0) {
+                burst(from, projectileMaterial, 1, 0.45);
+                projectile.trailTimer = 0.06;
+            }
+        }
+    }
+}
+
+function updateParticles(dt) {
+    for (const particle of particles) {
+        particle.age += dt;
+        if (particle.age >= particle.life) {
+            particle.entity.destroy();
+            particles.delete(particle);
+            continue;
+        }
+        particle.velocity.y -= dt * 5;
+        const position = particle.entity.getPosition();
+        particle.entity.setPosition(position.x + particle.velocity.x * dt, position.y + particle.velocity.y * dt, position.z + particle.velocity.z * dt);
+        const scale = particle.size * (1 - particle.age / particle.life);
+        particle.entity.setLocalScale(scale, scale, scale);
+    }
+}
+
+function updateAppearance(actor, target, dt) {
+    const position = actor.entity.getPosition();
+    // Billboarding is independent of AI state, including idle and paused frames.
+    actor.entity.lookAt(target.x, position.y, target.z);
+    if (actor.health <= 0) {
+        actor.deathAge += dt;
+        const collapse = Math.min(1, actor.deathAge / 0.3);
+        actor.sprite.setLocalScale(actor.config.width * (1 + collapse * 0.32), 1, actor.config.height * (1 - collapse * 0.91));
+        actor.sprite.setLocalPosition(0, actor.config.height * (1 - collapse * 0.91) / 2, 0);
+        actor.sprite.render.material = actor.assets.normal[0];
         return;
     }
-
-    updateProjectiles(dt);
-    if (stateMachine.state === 'IDLE') {
-        attackCooldown = Math.max(0, attackCooldown - dt);
-        setAnimation('idle', dt);
+    const moving = actor.state === 'CHASE' && actor.stagger <= 0;
+    const frame = Math.floor((elapsed + actor.phase) / (moving ? 0.13 : 0.32)) % 4;
+    const effect = actor.flash > 0 ? 'hit' : actor.windup > 0 ? 'attack' : 'normal';
+    actor.sprite.render.material = actor.assets[effect][frame];
+    const breathing = Math.sin(elapsed * (moving ? 12 : 3) + actor.phase) * (moving ? 0.022 : 0.012);
+    actor.sprite.setLocalScale(actor.config.width, 1, actor.config.height * (1 + breathing));
+    if (actor.charge.enabled) {
+        const progress = 1 - actor.windup / actor.config.windup;
+        const size = 0.15 + progress * 0.38 + Math.sin(elapsed * 24) * 0.03;
+        actor.charge.setLocalScale(size, size, size);
     }
-    stateMachine.update(dt);
+}
+
+function updateActor(actor, target, dt) {
+    actor.flash = Math.max(0, actor.flash - dt);
+    actor.stagger = Math.max(0, actor.stagger - dt);
+    actor.cooldown = Math.max(0, actor.cooldown - dt);
+    actor.sightTimer -= dt;
+    actor.awareness = Math.max(0, actor.awareness - dt);
+    if (actor.sightTimer <= 0) {
+        actor.sightTimer = 0.22 + (actor.phase % 0.08);
+        actor.visible = canSee(actor, target);
+        if (actor.visible) {
+            actor.lastSeen = { ...target };
+            actor.awareness = 7;
+        }
+    }
+    if (actor.stagger > 0) return;
+    if (actor.windup > 0) {
+        actor.windup = Math.max(0, actor.windup - dt);
+        if (actor.windup <= 0) releaseAttack(actor, target);
+        return;
+    }
+    if (actor.awareness <= 0 || !actor.lastSeen) {
+        setState(actor, 'IDLE');
+        return;
+    }
+    const position = actor.entity.getPosition();
+    const distance = Math.hypot(target.x - position.x, target.z - position.z);
+    const sameHeight = Math.abs(target.y - 1.55 - position.y) < 1.2;
+    if (actor.visible && distance <= actor.config.range && (actor.type === 'acolyte' || sameHeight) && actor.cooldown <= 0) {
+        beginAttack(actor, target);
+        return;
+    }
+    setState(actor, 'CHASE');
+    if (actor.type === 'acolyte' && actor.visible && distance < 11) {
+        if (distance < 4) moveActor(actor, { x: position.x + (position.x - target.x), z: position.z + (position.z - target.z) }, dt, 0.65);
+        return;
+    }
+    if (actor.type !== 'acolyte' && actor.visible && distance < actor.config.range * 0.8 && sameHeight) return;
+    chase(actor, actor.lastSeen, dt);
+}
+
+function updateEnemies(deltaTime) {
+    const target = targetPosition();
+    if (!app || !target) return;
+    const paused = app.gamePaused || player?.getHealth?.() <= 0;
+    const dt = paused ? 0 : Math.min(Math.max(deltaTime, 0), 0.06);
+    elapsed += dt;
+    if (!paused) {
+        updateProjectiles(dt, target);
+        updateParticles(dt);
+    }
+    for (const actor of enemies) {
+        if (!paused && actor.health > 0 && player?.getHealth?.() > 0) updateActor(actor, target, dt);
+        updateAppearance(actor, target, dt);
+    }
+}
+
+function hitSegment(from, to, damage, radius = 0.12) {
+    if (!app || app.gamePaused || player?.getHealth?.() <= 0) return null;
+    const hit = nearestEnemyHit(from, to, enemies.map((actor) => ({
+        id: actor.id, type: actor.type, health: actor.health, config: actor.config,
+        position: bodyPosition(actor), actor,
+    })), radius);
+    if (!hit) return null;
+    const actor = hit.enemy.actor;
+    const amount = Math.max(0, Number(damage) || 0);
+    if (amount <= 0) return null;
+    actor.health = Math.max(0, actor.health - amount);
+    actor.flash = 0.13;
+    actor.stagger = actor.type === 'warden' ? 0.055 : 0.18;
+    actor.awareness = 9;
+    actor.lastSeen = targetPosition();
+    actor.repath = 0;
+    const position = pointOnSegment(from, to, hit.t);
+    burst(position, bloodMaterial, actor.health <= 0 ? 12 : 5, actor.health <= 0 ? 1.2 : 0.8);
+    if (actor.type !== 'warden' || actor.health <= 0) {
+        actor.windup = 0;
+        actor.charge.enabled = false;
+        actor.cooldown = Math.max(actor.cooldown, 0.45);
+    }
+    const killed = actor.health <= 0;
+    const result = { id: actor.id, type: actor.type, position, t: hit.t, health: actor.health, maxHealth: actor.config.health, killed };
+    emit('hit', result);
+    if (killed) {
+        killCount++;
+        setState(actor, 'DEAD');
+        emit('kill', { ...result, position: bodyPosition(actor) });
+    } else setState(actor, actor.windup > 0 ? 'ATTACK' : 'CHASE');
+    return result;
+}
+
+function getEnemies() {
+    return enemies.filter((actor) => actor.health > 0).map((actor) => ({
+        id: actor.id, type: actor.type, name: actor.config.name, position: bodyPosition(actor),
+        health: actor.health, maxHealth: actor.config.health, state: actor.state,
+        radius: actor.config.radius, height: actor.config.height,
+    }));
+}
+
+function getStats() {
+    return { total: enemies.length, killed: killCount, remaining: enemies.length - killCount };
 }
 
 function getState() {
-    return stateMachine?.state ?? 'IDLE';
+    return enemies[0]?.state ?? 'IDLE';
 }
 
 function cleanup() {
-    app?.off('update', updateEnemy);
-    enemy?.destroy?.();
-    projectiles.forEach(({ projectile }) => projectile.destroy());
+    app?.off('update', updateEnemies);
+    enemies.forEach((actor) => actor.entity.destroy());
+    enemies.length = 0;
+    projectiles.forEach((projectile) => projectile.entity.destroy());
     projectiles.clear();
-    frameTextures.forEach((texture) => texture.destroy?.());
-    enemy = null;
-    sprite = null;
-    spriteMaterials = [];
-    frameTextures = [];
-    collisionGrid = [];
-    rampCells = [];
-    stateMachine = null;
-    pathfinder = null;
-    path = [];
-    pathIndex = 0;
-    pathTargetKey = null;
-    pathRepathTimer = 0;
-    rangedDecisionCooldown = 0;
-    lastRangedDecisionKey = null;
-    app = null;
-    player = null;
-    lighting = null;
+    particles.forEach((particle) => particle.entity.destroy());
+    particles.clear();
+    speciesAssets.forEach((assets) => {
+        [...assets.normal, ...assets.hit, ...assets.attack].forEach((material) => material.destroy());
+        assets.textures.forEach((texture) => texture.destroy());
+    });
+    speciesAssets.clear();
+    sharedMaterials.forEach((material) => material.destroy());
+    sharedMaterials.length = 0;
+    projectileMaterial = projectileHaloMaterial = bloodMaterial = shadowMaterial = null;
+    app = player = dungeon = pathfinder = null;
+    ramps = [];
+    elapsed = killCount = nextPathSearch = 0;
 }
 
 onBeforeUnmount(cleanup);
-
-defineExpose({ setupEnemy, getState, cleanup });
+defineExpose({ setupEnemies, setupEnemy, hitSegment, getEnemies, getStats, getState, cleanup });
 </script>
 
 <template>

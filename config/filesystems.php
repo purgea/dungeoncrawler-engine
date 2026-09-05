@@ -30,6 +30,13 @@ return [
 
     'disks' => [
 
+        'extras' => [
+            'driver' => 'local',
+            'root' => env('NATIVEPHP_EXTRAS_PATH', base_path('extras')),
+            'throw' => false,
+            'links' => 'skip',
+        ],
+
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),

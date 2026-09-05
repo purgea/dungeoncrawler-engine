@@ -2,10 +2,11 @@
 
 namespace App\Providers;
 
+use App\Models\WorldStageLevel;
 use Illuminate\Support\Facades\Artisan;
 use Native\Desktop\Contracts\ProvidesPhpIni;
-use Native\Desktop\Facades\Window;
 use Native\Desktop\Facades\Settings;
+use Native\Desktop\Facades\Window;
 
 class NativeAppServiceProvider implements ProvidesPhpIni
 {
@@ -15,12 +16,12 @@ class NativeAppServiceProvider implements ProvidesPhpIni
      */
     public function boot(): void
     {
-        // TODO: Remove these forget statements before release
-        Settings::forget('seeded');
-        Settings::forget('current_level_seed');
-        
-        if (! Settings::get('seeded', false)) {
+        // Settings survive app upgrades, while the bundled database can be
+        // replaced or cleared. Check the actual content so the title screen's
+        // New Journey route never points at an empty campaign.
+        if (! Settings::get('seeded', false) || ! WorldStageLevel::query()->exists()) {
             Artisan::call('db:seed');
+            Settings::set('seeded', true);
         }
 
         Window::open()->maximized()

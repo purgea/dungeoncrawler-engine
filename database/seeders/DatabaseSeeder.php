@@ -4,7 +4,6 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
-use Native\Desktop\Facades\Settings;
 
 class DatabaseSeeder extends Seeder
 {
@@ -21,7 +20,5 @@ class DatabaseSeeder extends Seeder
             DecorationsSeeder::class,
             WeaponsSeeder::class,
         ]);
-
-        Settings::set('seeded', true);
     }
 }

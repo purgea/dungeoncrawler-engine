@@ -19,8 +19,14 @@ final class DungeonGenerator
      *     lighting: array<string, mixed>,
      *     grid: array<int, array<int, array<string, mixed>|null>>,
      *     startRoom: array<string, int|bool>,
-     *     spawn: array<string, int>
-     *     decorations: list<array{asset: array<string, mixed>, floor: int, x: int, y: int}>
+     *     spawn: array<string, int>,
+     *     decorations: list<array{asset: array<string, mixed>, floor: int, x: int, y: int}>,
+     *     seed: int,
+     *     enemies: list<array<string, mixed>>,
+     *     pickups: list<array<string, mixed>>,
+     *     traps: list<array<string, mixed>>,
+     *     exit: array{x: int, y: int, floor: int},
+     *     requiredSigils: int
      * }
      */
     public function generate(array $decorationAssets = [], array $data = [], int $seed = 1, array $lighting = []): array
@@ -33,13 +39,14 @@ final class DungeonGenerator
         $wallHeight = max(0.1, (float) ($data['wall_height'] ?? 3.3));
         $roomConfig = $data['rooms'] ?? [];
         $roomCount = max(1, (int) ($roomConfig['count_per_floor'] ?? 8));
-        $minRoomWidth = max(3, (int) ($roomConfig['min_width'] ?? 4));
-        $maxRoomWidth = max($minRoomWidth, (int) ($roomConfig['max_width'] ?? 8));
-        $minRoomHeight = max(3, (int) ($roomConfig['min_height'] ?? 4));
-        $maxRoomHeight = max($minRoomHeight, (int) ($roomConfig['max_height'] ?? 9));
+        $minRoomWidth = min($width - 4, max(3, (int) ($roomConfig['min_width'] ?? 4)));
+        $maxRoomWidth = min($width - 4, max($minRoomWidth, (int) ($roomConfig['max_width'] ?? 8)));
+        $minRoomHeight = min($height - 4, max(3, (int) ($roomConfig['min_height'] ?? 4)));
+        $maxRoomHeight = min($height - 4, max($minRoomHeight, (int) ($roomConfig['max_height'] ?? 9)));
         $placementAttempts = max(1, (int) ($roomConfig['placement_attempts'] ?? 180));
         $requestedFloorCount = max(1, (int) ($data['floor_count'] ?? 3));
-        $maxFloorCount = max(1, intdiv($width - 2, $minRoomWidth + 3));
+        $regionGap = max(2, (int) ceil(10 / ($tileSize * sqrt(3))) - 2);
+        $maxFloorCount = max(1, intdiv($width - 4 + $regionGap, $minRoomWidth + $regionGap));
         $floorCount = min($requestedFloorCount, $maxFloorCount);
         $floorElevations = $this->generateFloorElevations($floorCount);
         $grid = array_fill(0, $height, array_fill(0, $width, null));
@@ -48,7 +55,7 @@ final class DungeonGenerator
         if ($this->random->int(0, 1) === 1) {
             $regionFloors = array_reverse($regionFloors);
         }
-        $availableRegionWidth = $width - 4 - 2 * (count($regionFloors) - 1);
+        $availableRegionWidth = $width - 4 - $regionGap * (count($regionFloors) - 1);
         $baseRegionWidth = intdiv($availableRegionWidth, count($regionFloors));
         $extraRegionWidth = $availableRegionWidth % count($regionFloors);
         $floorRegions = [];
@@ -60,7 +67,7 @@ final class DungeonGenerator
                 'minX' => $minX,
                 'maxX' => $minX + $regionWidth - 1,
             ];
-            $minX += $regionWidth + 2;
+            $minX += $regionWidth + $regionGap;
         }
         $rooms = [];
         $verticalCorridors = [];
@@ -109,12 +116,14 @@ final class DungeonGenerator
 
         foreach ($floorRegions as $region) {
             for ($attempt = 0; $attempt < $placementAttempts && $this->roomCount($rooms, $region['floor']) < $roomCount; $attempt++) {
+                $roomWidth = $this->random->int($minRoomWidth, min($maxRoomWidth, $region['maxX'] - $region['minX'] + 1));
+                $roomHeight = $this->random->int($minRoomHeight, $maxRoomHeight);
                 $room = [
                     'floor' => $region['floor'],
-                    'w' => $this->random->int($minRoomWidth, min($maxRoomWidth, $region['maxX'] - $region['minX'])),
-                    'h' => $this->random->int($minRoomHeight, $maxRoomHeight),
-                    'x' => $this->random->int($region['minX'], max($region['minX'], $region['maxX'] - $maxRoomWidth)),
-                    'y' => $this->random->int(2, $height - $maxRoomHeight - 2),
+                    'w' => $roomWidth,
+                    'h' => $roomHeight,
+                    'x' => $this->random->int($region['minX'], $region['maxX'] - $roomWidth + 1),
+                    'y' => $this->random->int(2, $height - $roomHeight - 2),
                     'gateway' => false,
                 ];
 
@@ -162,9 +171,14 @@ final class DungeonGenerator
             'y' => (int) floor($startRoom['y'] + $startRoom['h'] / 2),
             'floor' => $startRoom['floor'],
         ];
-        $decorationCount = (int) ($data['decorations']['count'] ?? 20);
+        $population = (new DungeonPopulation)->populate([
+            'grid' => $grid, 'tileSize' => $tileSize, 'spawn' => $spawn,
+        ], $seed);
+        $decorationCount = max(0, (int) ($data['decorations']['count'] ?? 20));
         $floorAssets = array_values(array_filter($decorationAssets, fn (array $asset): bool => ($asset['placement'] ?? 'floor') === 'floor'));
-        $decorations = $this->selectDecorations($grid, [$spawn], $floorAssets, $width, $height, $decorationCount);
+        $decorations = $this->selectDecorations($grid, [
+            $spawn, $population['exit'], ...$population['enemies'], ...$population['pickups'], ...$population['traps'],
+        ], $floorAssets, $width, $height, $decorationCount);
 
         return [
             'schemaVersion' => 1,
@@ -178,6 +192,7 @@ final class DungeonGenerator
             'startRoom' => $startRoom,
             'spawn' => $spawn,
             'decorations' => $decorations,
+            ...$population,
         ];
     }
 

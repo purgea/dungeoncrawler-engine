@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Storage;
 
 class Asset extends Model
 {
@@ -19,8 +18,6 @@ class Asset extends Model
             return null;
         }
 
-        $path = Storage::disk('extras')->path($this->path);
-
-        return str_replace('\\', '/', 'file:///' . $path);
+        return route('assets.show', ['asset' => $this->path], false);
     }
 }

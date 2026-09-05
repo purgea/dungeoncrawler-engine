@@ -4,7 +4,7 @@ import { router } from '@inertiajs/vue3';
 import Loader from '../Components/Loader.vue';
 
 onMounted(() => {
-    router.get('/game/1-1', {}, {
+    router.get('/game?new=1', {}, {
         replace: true,
     });
 });

@@ -124,7 +124,7 @@ final class WorldSeeder extends Seeder
                         'height' => 63,
                         'tile_size' => 4,
                         'wall_height' => 3.3,
-                        'floor_count' => 5,
+                        'floor_count' => 3,
                         'rooms' => [
                             'count_per_floor' => 8,
                             'min_width' => 4,

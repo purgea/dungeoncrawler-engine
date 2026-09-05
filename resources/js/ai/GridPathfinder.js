@@ -1,4 +1,4 @@
-import { canTraverseTiles } from './GridCollision';
+import { canTraverseTiles } from './GridCollision.js';
 
 export class GridPathfinder {
     constructor(grid, width, height) {
