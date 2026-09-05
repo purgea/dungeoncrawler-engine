@@ -5,17 +5,18 @@ let soundtrack = null;
 function sync() {
     if (!props.active || props.muted) { soundtrack?.pause(); return; }
     if (!soundtrack) {
-        const definition = props.musicDefinitions.find((entry) => entry.path_url);
+        const choices = props.musicDefinitions.filter((entry) => entry.path_url);
+        const definition = choices[Math.floor(Math.random() * choices.length)];
         if (!definition) return;
         soundtrack = new Audio(definition.path_url);
         soundtrack.loop = true;
-        soundtrack.preload = 'none';
+        soundtrack.preload = 'auto';
         soundtrack.volume = 0.22;
     }
     // Browsers may withhold autoplay; retry on the next deliberate resume.
     soundtrack.play().catch(() => {});
 }
-watch(() => [props.active, props.muted], sync, { immediate: true });
+watch(() => [props.active, props.muted, props.musicDefinitions], sync, { deep: true, immediate: true });
 onBeforeUnmount(() => { soundtrack?.pause(); if (soundtrack) soundtrack.src = ''; soundtrack = null; });
 </script>
 <template><div hidden /></template>

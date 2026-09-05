@@ -67,6 +67,7 @@ class DungeonController extends Controller
                 'levelId' => $level->id,
                 'levelSlug' => $level->slug,
                 'levelName' => $level->name,
+                'stageSlug' => $stage->slug,
                 'stageName' => $stage->name,
                 'levelNumber' => $index + 1,
                 'totalLevels' => $levels->count(),

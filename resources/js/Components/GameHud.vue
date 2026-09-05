@@ -13,7 +13,8 @@ const overlay = computed(() => ['ready', 'paused', 'dead', 'complete'].includes(
 const finished = computed(() => props.status === 'complete' && !props.campaign?.nextLevelUrl);
 const title = computed(() => props.status === 'dead' ? 'Claimed by the dark' : finished.value ? 'The curse is broken' : props.status === 'complete' ? 'The seal is broken' : props.hasStarted ? 'Between worlds' : 'The Ruined Marches');
 const subtitle = computed(() => props.status === 'dead' ? 'The stones remember. Rise, and try again.' : finished.value ? 'The final gate stands open. Dawn returns to the Ashen Realms.' : props.status === 'complete' ? 'Another threshold crossed. The darkness retreats.' : `Recover the ${props.requiredSigils} sigils. Unseal the gate. Survive the descent.`);
-const infiniteWeapon = computed(() => Number(props.weapon?.cost ?? 0) === 0);
+const selectedWeapon = computed(() => props.weapon?.weapons?.find((entry) => entry.id === props.weapon?.id) || props.weapon || {});
+const infiniteWeapon = computed(() => Number(selectedWeapon.value.cost ?? 0) === 0);
 </script>
 
 <template>

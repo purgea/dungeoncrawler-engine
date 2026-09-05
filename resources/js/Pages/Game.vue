@@ -34,6 +34,6 @@ onMounted(() => {
 <template>
     <main class="relative h-screen w-screen overflow-hidden bg-[#050a08] text-[#ece7d8]">
         <Engine :key="`${dungeon.seed}-${campaign.levelSlug}-${attempt}`" :dungeon="dungeon" :campaign="campaign" :initial-state="initialState" @checkpoint="onCheckpoint" @complete="onComplete" @restart="restart" @next="nextLevel" @home="home" @lock-change="active = $event" @mute-change="muted = $event" />
-        <Music :key="campaign.levelSlug" :music-definitions="musicDefinitions" :active="active" :muted="muted" />
+        <Music :key="campaign.stageSlug || campaign.stageName || campaign.levelSlug" :music-definitions="musicDefinitions" :active="active" :muted="muted" />
     </main>
 </template>

@@ -11,8 +11,8 @@ final class GameDefinitionsSeeder extends Seeder
 {
     public function run(): void
     {
-        $stage = World::query()->where('slug', 'the-ashen-realms')->firstOrFail()
-            ->stages()->where('slug', 'the-ruined-marches')->firstOrFail();
+        $world = World::query()->where('slug', 'the-ashen-realms')->firstOrFail();
+        $stage = $world->stages()->where('slug', 'the-ruined-marches')->firstOrFail();
 
         $definitions = [
             'rule' => [
@@ -97,16 +97,9 @@ final class GameDefinitionsSeeder extends Seeder
             }
         }
 
-        foreach ($disk->allFiles() as $path) {
+        $musicDirectory = trim($world->slug.'/'.$stage->slug.'/music', '/');
+        foreach ($disk->allFiles($musicDirectory) as $path) {
             $path = str_replace('\\', '/', $path);
-            $segments = explode('/', $path);
-
-            if (($segments[0] ?? null) !== 'the-ashen-realms'
-                || ($segments[1] ?? null) !== 'the-ruined-marches'
-                || ($segments[2] ?? null) !== 'music') {
-                continue;
-            }
-
             $definitions['music'][] = [
                 'slug' => 'music.'.str_replace('/', '.', $path),
                 'sort_order' => count($definitions['music']),
