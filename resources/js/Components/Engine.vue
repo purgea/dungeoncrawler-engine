@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, toRaw } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, toRaw } from 'vue';
 import * as pc from 'playcanvas';
 import DungeonRenderer from './DungeonRenderer.vue';
 import Enemy from './Enemy.vue';
@@ -33,14 +33,13 @@ const playerHealth = ref(100), playerArmor = ref(0), weaponState = ref({
     weapons: props.dungeon.definitions?.weapon || [],
 });
 const status = ref('loading'), hasStarted = ref(false), elapsed = ref(0), kills = ref(0), sigils = ref(0), mapOpen = ref(false);
-const message = ref(''), prompt = ref(''), damageFlash = ref(0), pickupFlash = ref(0), hitFlash = ref(0), target = ref(null);
+const message = ref(''), prompt = ref(''), damageFlash = ref(0), pickupFlash = ref(0), hitFlash = ref(0);
 const settings = ref(readSettings());
 const exploredTiles = new Set();
 const audio = new GameAudio();
 let collisionGrid = [], resizeObserver = null, leftMouseHeld = false, world = null, disposed = false;
-let messageTimer = 0, targetTimer = 0, hudTimer = 0, playTime = 0, navigationTimer = 0, pathfinder = null;
-const navigationPath = shallowRef([]), navigationHint = ref('');
-const objective = computed(() => sigils.value >= props.dungeon.requiredSigils ? `Gate unsealed · ${navigationHint.value || 'Find the exit portal'}` : `${sigils.value} / ${props.dungeon.requiredSigils} sigils recovered · ${navigationHint.value || 'Explore the ruins'}`);
+let messageTimer = 0, hudTimer = 0, playTime = 0, navigationTimer = 0, pathfinder = null;
+const navigationPath = shallowRef([]);
 const nextFrame = () => new Promise(resolve => requestAnimationFrame(resolve));
 
 function notify(text, duration = 3) { message.value = text; messageTimer = duration; }
@@ -77,8 +76,6 @@ function updateNavigation() {
         if (path.length && (!best.length || path.length < best.length)) best = path;
     }
     navigationPath.value = best;
-    const distance = Math.max(0, best.length - 1) * props.dungeon.tileSize;
-    navigationHint.value = best.length ? `${distance}m to ${sigils.value >= props.dungeon.requiredSigils ? 'gate' : 'nearest sigil'}` : '';
 }
 function resizeCanvasToViewport() {
     if (app.value && viewport.value) app.value.resizeCanvas(Math.max(1, viewport.value.clientWidth), Math.max(1, viewport.value.clientHeight));
@@ -161,14 +158,13 @@ function onPickup(item) {
     // Markers are refreshed after WorldObjects marks the pickup as collected.
     return true;
 }
-function onEnemyKill(enemy) {
+function onEnemyKill() {
     kills.value++;
     audio.play('kill');
-    if (enemy.type === 'warden') notify(`${enemy.name || 'The guardian'} has fallen.`, 3);
     // A small on-kill return rewards aggressive play without a forced ammo grind.
     weaponComponent.value?.addMana?.(3);
 }
-function onHit(event) { target.value = event; targetTimer = 2; hitFlash.value = 0.18; audio.play('hit'); }
+function onHit() { hitFlash.value = 0.18; audio.play('hit'); }
 function onDamage() { damageFlash.value = 0.9; audio.play('hurt'); }
 function toggleMute() {
     settings.value.muted = !settings.value.muted;
@@ -218,9 +214,7 @@ function updateWorld(rawDt) {
     pickupFlash.value = Math.max(0, pickupFlash.value - dt * 1.3);
     hitFlash.value = Math.max(0, hitFlash.value - dt);
     messageTimer -= dt;
-    targetTimer -= dt;
     if (messageTimer <= 0) message.value = '';
-    if (targetTimer <= 0) target.value = null;
     prompt.value = world.nearPortal(camera) ? sigils.value >= props.dungeon.requiredSigils ? 'Enter the unsealed gate' : `${props.dungeon.requiredSigils - sigils.value} more sigils needed` : '';
     hudTimer -= dt;
     navigationTimer -= dt;
@@ -346,7 +340,7 @@ defineExpose({ cleanup });
         <Weapon ref="weaponComponent" @state-change="weaponState = $event" @shot="audio.play($event.id)" @empty="audio.play('empty'); notify('Mana depleted. Aether Wand equipped.', 2)" />
         <DungeonRenderer ref="dungeonRenderer" :layout="dungeon" />
         <Minimap v-if="status === 'playing'" :grid="minimapGrid" :explored="exploredTiles" :player="minimapPlayer" :revision="minimapRevision" :markers="markers" :exit="dungeon.exit" :expanded="mapOpen" :path="navigationPath" />
-        <GameHud :status="status" :campaign="campaign" :health="playerHealth" :armor="playerArmor" :weapon="weaponState" :kills="kills" :enemy-count="dungeon.enemies?.length || 0" :sigils="sigils" :required-sigils="dungeon.requiredSigils" :elapsed="elapsed" :message="message" :prompt="prompt" :damage-flash="damageFlash" :pickup-flash="pickupFlash" :hit-flash="hitFlash" :target="target" :muted="settings.muted" :sensitivity="settings.sensitivity" :has-started="hasStarted" :map-open="mapOpen" :objective="objective" @resume="resume" @restart="emit('restart')" @next="emit('next')" @home="emit('home')" @mute="toggleMute" @sensitivity="setSensitivity" />
+        <GameHud :status="status" :campaign="campaign" :health="playerHealth" :armor="playerArmor" :weapon="weaponState" :kills="kills" :enemy-count="dungeon.enemies?.length || 0" :sigils="sigils" :required-sigils="dungeon.requiredSigils" :elapsed="elapsed" :message="message" :prompt="prompt" :damage-flash="damageFlash" :pickup-flash="pickupFlash" :hit-flash="hitFlash" :muted="settings.muted" :sensitivity="settings.sensitivity" :has-started="hasStarted" @resume="resume" @restart="emit('restart')" @next="emit('next')" @home="emit('home')" @mute="toggleMute" @sensitivity="setSensitivity" />
         <Loader ref="loaderComponent" />
     </div>
 </template>

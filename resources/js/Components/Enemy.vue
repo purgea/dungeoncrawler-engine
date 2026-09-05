@@ -102,8 +102,7 @@ function chestPosition(actor) {
 
 function canSee(actor, target) {
     const eye = chestPosition(actor);
-    return Math.hypot(target.x - eye.x, target.z - eye.z) <= actor.config.sight &&
-        traceDungeonSegment(eye, target, dungeon) === null;
+    return traceDungeonSegment(eye, target, dungeon) === null;
 }
 
 function setState(actor, state) {
@@ -146,9 +145,9 @@ function createEnemy(placement, index) {
     enemies.push({
         id: placement.id ?? `enemy-${index}`, type, config, assets, entity, sprite, shadow, charge,
         health: config.health, state: 'IDLE', phase: index * 0.73,
-        flash: 0, stagger: 0, cooldown: 0.5 + (index % 4) * 0.16, windup: 0,
-        sightTimer: (index % 5) * 0.045, visible: false, awareness: 0, lastSeen: null,
-        path: [], pathIndex: 0, repath: (index % 5) * 0.1, deathAge: 0,
+        flash: 0, stagger: 0, cooldown: 0, windup: 0,
+        sightTimer: (index % 5) * 0.02, visible: false, awareness: 0, lastSeen: null,
+        path: [], pathIndex: 0, repath: (index % 5) * 0.05, deathAge: 0,
     });
 }
 
@@ -219,7 +218,7 @@ function chase(actor, target, dt) {
         const position = actor.entity.getPosition();
         actor.path = pathfinder.findPath(tileAt(position.x, position.z), tileAt(target.x, target.z));
         actor.pathIndex = actor.path.length > 1 ? 1 : 0;
-        actor.repath = 0.8 + (actor.phase % 0.4);
+        actor.repath = 0.25 + (actor.phase % 0.15);
         // At most one A* search per frame, even after a large group wakes up.
         nextPathSearch = elapsed + 0.001;
     }
@@ -369,7 +368,7 @@ function updateActor(actor, target, dt) {
     actor.sightTimer -= dt;
     actor.awareness = Math.max(0, actor.awareness - dt);
     if (actor.sightTimer <= 0) {
-        actor.sightTimer = 0.22 + (actor.phase % 0.08);
+        actor.sightTimer = 0.06 + (actor.phase % 0.04);
         actor.visible = canSee(actor, target);
         if (actor.visible) {
             actor.lastSeen = { ...target };

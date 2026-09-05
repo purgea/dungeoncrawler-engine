@@ -129,6 +129,36 @@ final class DungeonPopulation
         $traps = [];
         $trapCount = min(12, max(2, intdiv(count($tiles), 100)));
         $trapDefinitions = array_values($definitions['trap'] ?? []);
+        $wallTrapDefinitions = array_values(array_filter($trapDefinitions, fn (array $definition): bool => ($definition['mount'] ?? null) === 'wall'));
+        $floorTrapDefinitions = array_values(array_filter($trapDefinitions, fn (array $definition): bool => ($definition['mount'] ?? null) !== 'wall'));
+        $wallTrapLimit = min(count($wallTrapDefinitions), max(1, intdiv($trapCount, 3)));
+        $wallTrapPlaced = 0;
+
+        foreach ($random->shuffle(array_keys($available)) as $key) {
+            if (count($traps) >= $trapCount || $wallTrapPlaced >= $wallTrapLimit) {
+                break;
+            }
+            if (! $safe($key) || $exitDistances[$key] < 3) {
+                continue;
+            }
+            $tile = $tiles[$key];
+            $wallSide = $this->wallSide($layout['grid'], $tile['x'], $tile['y'], $tile['floor']);
+            if ($wallSide === null) {
+                continue;
+            }
+            $trapDefinition = $wallTrapDefinitions[$wallTrapPlaced % count($wallTrapDefinitions)];
+            $traps[] = [
+                'id' => 'trap-'.count($traps),
+                'type' => $trapDefinition['id'],
+                'damage' => $trapDefinition['damage'] ?? null,
+                'phase' => $random->int(0, 4000) / 1000,
+                'wall_side' => $wallSide,
+                ...$tile,
+            ];
+            unset($available[$key]);
+            $wallTrapPlaced++;
+        }
+
         foreach ($random->shuffle(array_keys($available)) as $key) {
             if (count($traps) >= $trapCount) {
                 break;
@@ -136,7 +166,7 @@ final class DungeonPopulation
             if (! $safe($key) || $exitDistances[$key] < 3) {
                 continue;
             }
-            $trapDefinition = $trapDefinitions === [] ? [] : $trapDefinitions[count($traps) % count($trapDefinitions)];
+            $trapDefinition = $floorTrapDefinitions === [] ? [] : $floorTrapDefinitions[count($traps) % count($floorTrapDefinitions)];
             $traps[] = [
                 'id' => 'trap-'.count($traps),
                 'type' => $trapDefinition['id'] ?? (count($traps) % 2 === 0 ? 'spikes' : 'fire'),
@@ -159,5 +189,22 @@ final class DungeonPopulation
         }
 
         return ['seed' => $seed, 'enemies' => $enemies, 'pickups' => $pickups, 'traps' => $traps, 'exit' => $exit, 'requiredSigils' => count($sigilKeys) ?: $requiredSigils];
+    }
+
+    private function wallSide(array $grid, int $x, int $y, int $floor): ?string
+    {
+        foreach ([
+            'north' => [0, -1],
+            'east' => [1, 0],
+            'south' => [0, 1],
+            'west' => [-1, 0],
+        ] as $side => [$offsetX, $offsetY]) {
+            $neighbor = $grid[$y + $offsetY][$x + $offsetX] ?? null;
+            if (! $neighbor || ! ($neighbor['walkable'] ?? false) || ($neighbor['floor'] ?? $floor) !== $floor) {
+                return $side;
+            }
+        }
+
+        return null;
     }
 }

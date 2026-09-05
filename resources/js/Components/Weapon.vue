@@ -21,6 +21,7 @@ let recoil = 0;
 let switchDip = 0;
 let flashTime = 0;
 let generation = 0;
+const WEAPON_VIEW_SCALE = 0.58;
 const projectiles = new Set();
 const effects = new Set();
 const textures = new Map();
@@ -208,6 +209,30 @@ function createFlash() {
     camera.addChild(flashLight);
 }
 
+function weaponViewPlacement(definition) {
+    const id = typeof definition === 'string' ? definition : definition?.id;
+    const crossbow = id === 'crossbow';
+    const viewMode = typeof definition === 'object' ? definition?.view_mode : null;
+    const centered = viewMode === 'centered' || (!viewMode && crossbow);
+    const handOffset = centered ? 0 : 0.46;
+    return {
+        crossbow,
+        centered,
+        handOffset,
+        lowerOffset: centered ? -0.34 : -0.38,
+        muzzleX: centered ? 0 : handOffset + (crossbow ? 0 : 0.07),
+        muzzleY: centered ? -0.42 : -0.08,
+        muzzleDepth: 0.82,
+    };
+}
+
+function cameraPoint(cameraEntity, rightOffset, upOffset, forwardDistance) {
+    return cameraEntity.getPosition().clone()
+        .add(cameraEntity.right.clone().mulScalar(rightOffset))
+        .add(cameraEntity.up.clone().mulScalar(upOffset))
+        .add(cameraEntity.forward.clone().mulScalar(forwardDistance));
+}
+
 async function setupWeapon(appInstance, cameraEntity, weaponDefinitions = [], lightingConfig = {}, options = {}) {
     cleanup();
     const setupGeneration = generation;
@@ -255,7 +280,7 @@ async function setupWeapon(appInstance, cameraEntity, weaponDefinitions = [], li
 function applySelection() {
     if (!weapon || !arsenal.weapon) return;
     const crossbow = arsenal.id === 'crossbow';
-    const height = crossbow ? 1.62 : 1.36;
+    const height = (crossbow ? 1.62 : 1.36) * WEAPON_VIEW_SCALE;
     const texture = textures.get(arsenal.id);
     weapon.render.material = spriteMaterials.get(arsenal.id);
     weapon.setLocalScale(height * texture.width / texture.height, 1, height);
@@ -268,10 +293,11 @@ function poseWeapon(dt) {
     if (moving) bobTime += dt * 9;
     recoil = Math.max(0, recoil - dt * 6);
     switchDip = Math.max(0, switchDip - dt * 1.8);
-    const crossbow = arsenal.id === 'crossbow';
+    const placement = weaponViewPlacement(arsenal.weapon);
+    const { crossbow, handOffset, lowerOffset } = placement;
     weapon.setLocalPosition(
-        (crossbow ? 0 : 0.09) + Math.sin(bobTime) * 0.019 * movementBlend,
-        (crossbow ? -0.17 : -0.20) + Math.abs(Math.cos(bobTime)) * 0.019 * movementBlend - recoil * 0.065 - switchDip,
+        handOffset + Math.sin(bobTime) * 0.019 * movementBlend,
+        lowerOffset + Math.abs(Math.cos(bobTime)) * 0.019 * movementBlend - recoil * 0.065 - switchDip,
         -0.98 + recoil * 0.07,
     );
     weapon.setLocalEulerAngles(90, 0, Math.sin(bobTime) * movementBlend * 0.5 + recoil * (crossbow ? 0 : -2));
@@ -281,7 +307,7 @@ function poseWeapon(dt) {
         const definition = arsenal.weapon;
         const size = (definition.id === 'emberstaff' ? 0.4 : 0.25) * (0.4 + flashTime / 0.09);
         flash.setLocalScale(size, 1, size);
-        flash.setLocalPosition(crossbow ? 0 : 0.16, crossbow ? -0.16 : 0.21, -0.82);
+        flash.setLocalPosition(placement.muzzleX, placement.muzzleY, -placement.muzzleDepth);
         flash.render.material.emissive.set(...definition.color);
         flashLight.light.color = new pc.Color(...definition.color);
     }
@@ -320,12 +346,12 @@ function fire(cameraEntity = camera) {
     const definition = result.weapon;
     recoil = definition.id === 'emberstaff' ? 1.6 : 1;
     flashTime = 0.09;
-    const forward = cameraEntity.forward.clone().normalize();
-    const right = cameraEntity.right.clone().normalize();
-    const origin = cameraEntity.getPosition().clone();
-    // Start at the eye, so the crosshair is truthful and a muzzle cannot emerge through a wall.
+    const placement = weaponViewPlacement(definition);
+    const origin = cameraPoint(cameraEntity, placement.muzzleX, placement.muzzleY, placement.muzzleDepth);
+    const aimDistance = 60;
     for (const spread of definition.id === 'crossbow' ? [-0.035, 0, 0.035] : [0]) {
-        const direction = forward.clone().add(right.clone().mulScalar(spread)).normalize();
+        const aimPoint = cameraPoint(cameraEntity, spread * aimDistance, 0, aimDistance);
+        const direction = aimPoint.sub(origin).normalize();
         const entity = new pc.Entity(`${definition.id}-projectile`);
         entity.addComponent('render', { type: definition.id === 'crossbow' ? 'box' : 'sphere', material: projectileMaterials.get(definition.id) });
         entity.setPosition(origin);

@@ -23,36 +23,36 @@ final class GameDefinitionsSeeder extends Seeder
                     'name' => 'Aether Wand', 'slot' => 1, 'cost' => 0, 'damage' => 22,
                     'cooldown' => 0.3, 'speed' => 34, 'radius' => 0.1, 'range' => 60,
                     'color' => [0.24, 0.7, 1], 'description' => 'Swift arcane bolts · infinite charge',
-                    'starting' => true,
+                    'starting' => true, 'view_mode' => 'hand',
                 ]],
                 ['slug' => 'crossbow', 'sort_order' => 2, 'data' => [
                     'name' => 'Grave Crossbow', 'slot' => 2, 'cost' => 5, 'damage' => 25,
                     'cooldown' => 0.6, 'speed' => 60, 'radius' => 0.075, 'range' => 80,
                     'color' => [0.34, 1, 0.54], 'description' => 'Three spectral bolts · 5 mana',
-                    'pickup_progress' => 0.18,
+                    'pickup_progress' => 0.18, 'view_mode' => 'centered',
                 ]],
                 ['slug' => 'emberstaff', 'sort_order' => 3, 'data' => [
                     'name' => 'Ember Staff', 'slot' => 3, 'cost' => 12, 'damage' => 95,
                     'cooldown' => 0.9, 'speed' => 24, 'radius' => 0.25, 'range' => 65,
                     'color' => [1, 0.3, 0.06], 'description' => 'Heavy infernal fireball · 12 mana',
-                    'pickup_progress' => 0.5,
+                    'pickup_progress' => 0.5, 'view_mode' => 'hand',
                 ]],
             ],
             'enemy' => [
                 ['slug' => 'imp', 'sort_order' => 1, 'data' => [
-                    'name' => 'Ash Imp', 'health' => 52, 'speed' => 4.4, 'radius' => 0.44,
-                    'height' => 1.8, 'width' => 1.55, 'sight' => 29, 'range' => 1.65,
-                    'damage' => 9, 'windup' => 0.42, 'cooldown' => 1.2,
+                    'name' => 'Ash Imp', 'health' => 52, 'speed' => 7.2, 'radius' => 0.44,
+                    'height' => 1.8, 'width' => 1.55, 'sight' => 10000, 'range' => 1.65,
+                    'damage' => 9, 'windup' => 0.22, 'cooldown' => 0.55,
                 ]],
                 ['slug' => 'acolyte', 'sort_order' => 2, 'data' => [
-                    'name' => 'Hollow Acolyte', 'health' => 72, 'speed' => 2.8, 'radius' => 0.46,
-                    'height' => 2.25, 'width' => 1.7, 'sight' => 34, 'range' => 23,
-                    'damage' => 13, 'windup' => 0.85, 'cooldown' => 2.8, 'projectile_speed' => 11,
+                    'name' => 'Hollow Acolyte', 'health' => 72, 'speed' => 5.2, 'radius' => 0.46,
+                    'height' => 2.25, 'width' => 1.7, 'sight' => 10000, 'range' => 23,
+                    'damage' => 13, 'windup' => 0.4, 'cooldown' => 1.1, 'projectile_speed' => 16,
                 ]],
                 ['slug' => 'warden', 'sort_order' => 3, 'data' => [
-                    'name' => 'Iron Warden', 'health' => 190, 'speed' => 2.4, 'radius' => 0.63,
-                    'height' => 2.65, 'width' => 2.05, 'sight' => 31, 'range' => 2.15,
-                    'damage' => 22, 'windup' => 0.78, 'cooldown' => 1.8,
+                    'name' => 'Iron Warden', 'health' => 190, 'speed' => 5.3, 'radius' => 0.63,
+                    'height' => 2.65, 'width' => 2.05, 'sight' => 10000, 'range' => 2.15,
+                    'damage' => 22, 'windup' => 0.36, 'cooldown' => 0.85,
                 ]],
             ],
             'pickup' => [
@@ -65,6 +65,7 @@ final class GameDefinitionsSeeder extends Seeder
             'trap' => [
                 ['slug' => 'spikes', 'sort_order' => 1, 'data' => ['name' => 'Rising Spikes', 'damage' => 22, 'color' => [0.48, 0.49, 0.46], 'warning_color' => [0.44, 0.12, 0.03], 'period' => 4]],
                 ['slug' => 'fire', 'sort_order' => 2, 'data' => ['name' => 'Cinder Vent', 'damage' => 16, 'color' => [1, 0.21, 0.015], 'warning_color' => [0.44, 0.12, 0.03], 'period' => 4.8]],
+                ['slug' => 'wall_head', 'sort_order' => 3, 'data' => ['name' => 'Flame Sentinel', 'damage' => 18, 'color' => [1, 0.16, 0.02], 'warning_color' => [1, 0.38, 0.04], 'period' => 1, 'projectile_speed' => 18, 'mount' => 'wall']],
             ],
         ];
 

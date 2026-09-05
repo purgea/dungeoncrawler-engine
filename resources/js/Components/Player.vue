@@ -37,6 +37,7 @@ let inputCanvas = null;
 let enemySystem = null;
 let removeListeners = () => {};
 const keys = new Set();
+const PLAYER_SPEED = 11.5;
 
 function setupPlayer(appInstance, canvas, spawnPoint, dungeon) {
     app = appInstance;
@@ -283,7 +284,7 @@ function updateMovement(dt) {
     const yawRadians = yaw * pc.math.DEG_TO_RAD;
     const sinYaw = Math.sin(yawRadians);
     const cosYaw = Math.cos(yawRadians);
-    const speed = (keys.has('ShiftLeft') || keys.has('ShiftRight') ? 11.5 : 8) * dt;
+    const speed = PLAYER_SPEED * dt;
     const movement = moveWithCollision(
         (normalizedX * cosYaw - normalizedZ * sinYaw) * speed,
         (-normalizedX * sinYaw - normalizedZ * cosYaw) * speed,
