@@ -113,8 +113,7 @@ export class WorldObjects {
         const hazardMaterial = this.material(trapData.color || [0.7, 0.7, 0.7], trapData.emissive ? 3 : 0);
         for (let x = -1; x <= 1; x++) for (let z = -1; z <= 1; z++) {
             this.mesh(root, 'vent', 'cylinder', this.brass, [x * width / 3.5, 0.06, z * width / 3.5], [0.24, 0.05, 0.24]);
-            const spikeSize = trapData.id === 'fire' ? 0.4 : 0.15;
-            this.mesh(spikes, 'spike', 'cone', hazardMaterial, [x * width / 3.5, 0.7, z * width / 3.5], [spikeSize, 1.4, spikeSize]);
+            this.mesh(spikes, 'spike', 'cone', hazardMaterial, [x * width / 3.5, 0.7, z * width / 3.5], [0.15, 1.4, 0.15]);
         }
         spikes.setLocalScale(1, 0.01, 1);
         this.traps.push({ ...trapData, root, spikes, warning, position, width, lastDamage: -Infinity, wasWarning: false });
@@ -239,7 +238,7 @@ export class WorldObjects {
                 }
                 continue;
             }
-            const phase = trapPhase(this.time, trap.phase, trap.type, trap.period);
+            const phase = trapPhase(this.time);
             trap.spikes.setLocalScale(1, Math.max(0.01, phase.extension), 1);
             trap.warning.emissiveIntensity = phase.active ? 4 : phase.warning ? 1.5 + Math.sin(this.time * 30) : 0.25;
             trap.warning.update();

@@ -1,6 +1,7 @@
 /** Small synthesized effects keep combat readable without extra asset downloads. */
 export class GameAudio {
     constructor() { this.context = null; this.muted = false; }
+    static SFX_GAIN = 2;
     unlock() {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         if (!AudioContext) return;
@@ -24,7 +25,7 @@ export class GameAudio {
         oscillator.type = type;
         oscillator.frequency.setValueAtTime(from, ctx.currentTime);
         oscillator.frequency.exponentialRampToValueAtTime(to, ctx.currentTime + duration);
-        gain.gain.setValueAtTime(volume, ctx.currentTime);
+        gain.gain.setValueAtTime(volume * GameAudio.SFX_GAIN, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
         oscillator.connect(gain).connect(ctx.destination);
         oscillator.start();

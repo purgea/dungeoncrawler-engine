@@ -132,7 +132,8 @@ final class DungeonPopulation
         $trapCount = min(24, max(6, intdiv(count($tiles), 55)));
         $trapDefinitions = array_values($definitions['trap'] ?? []);
         $wallTrapDefinitions = array_values(array_filter($trapDefinitions, fn (array $definition): bool => ($definition['mount'] ?? null) === 'wall'));
-        $floorTrapDefinitions = array_values(array_filter($trapDefinitions, fn (array $definition): bool => ($definition['mount'] ?? null) !== 'wall'));
+        $spikeDefinitions = array_values(array_filter($trapDefinitions, fn (array $definition): bool => ($definition['id'] ?? null) === 'spikes'));
+        $spikeDefinition = $spikeDefinitions[0] ?? ['id' => 'spikes'];
         $wallTrapLimit = $wallTrapDefinitions === [] ? 0 : max(1, intdiv($trapCount, 3));
         $wallTrapPlaced = 0;
 
@@ -168,12 +169,11 @@ final class DungeonPopulation
             if (! $safe($key) || $exitDistances[$key] < 3) {
                 continue;
             }
-            $trapDefinition = $floorTrapDefinitions === [] ? [] : $floorTrapDefinitions[count($traps) % count($floorTrapDefinitions)];
             $traps[] = [
                 'id' => 'trap-'.count($traps),
-                'type' => $trapDefinition['id'] ?? (count($traps) % 2 === 0 ? 'spikes' : 'fire'),
-                'damage' => $trapDefinition['damage'] ?? null,
-                'phase' => ($trapDefinition['id'] ?? null) === 'spikes' ? 0 : $random->int(0, 4000) / 1000,
+                'type' => 'spikes',
+                'damage' => $spikeDefinition['damage'] ?? null,
+                'phase' => 0,
                 ...$tiles[$key],
             ];
             unset($available[$key]);

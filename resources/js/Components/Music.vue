@@ -11,7 +11,6 @@ function sync() {
         soundtrack = new Audio(definition.path_url);
         soundtrack.loop = true;
         soundtrack.preload = 'auto';
-        soundtrack.volume = 0.22;
     }
     // Browsers may withhold autoplay; retry on the next deliberate resume.
     soundtrack.play().catch(() => {});
