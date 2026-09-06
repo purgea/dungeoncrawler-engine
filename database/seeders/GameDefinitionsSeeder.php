@@ -63,7 +63,7 @@ final class GameDefinitionsSeeder extends Seeder
                 ['slug' => 'weapon', 'sort_order' => 5, 'data' => ['name' => 'Relic Weapon', 'role' => 'weapon', 'color' => [1, 0.64, 0.2]]],
             ],
             'trap' => [
-                ['slug' => 'spikes', 'sort_order' => 1, 'data' => ['name' => 'Rising Spikes', 'damage' => 22, 'color' => [0.48, 0.49, 0.46], 'warning_color' => [0.44, 0.12, 0.03], 'period' => 4]],
+                ['slug' => 'spikes', 'sort_order' => 1, 'data' => ['name' => 'Rising Spikes', 'damage' => 22, 'color' => [0.48, 0.49, 0.46], 'warning_color' => [0.44, 0.12, 0.03], 'period' => 2.15]],
                 ['slug' => 'fire', 'sort_order' => 2, 'data' => ['name' => 'Cinder Vent', 'damage' => 16, 'color' => [1, 0.21, 0.015], 'warning_color' => [0.44, 0.12, 0.03], 'period' => 4.8]],
                 ['slug' => 'wall_head', 'sort_order' => 3, 'data' => ['name' => 'Flame Sentinel', 'damage' => 18, 'color' => [1, 0.16, 0.02], 'warning_color' => [1, 0.38, 0.04], 'period' => 1, 'projectile_speed' => 18, 'mount' => 'wall']],
             ],

@@ -149,7 +149,7 @@ export class WorldObjects {
     spawnFireball(trap) {
         const origin = this.wallOrigin(trap);
         const forward = this.forwardVector(trap.wall_side);
-        const direction = new pc.Vec3(forward.x, -0.08, forward.z).normalize();
+        const direction = new pc.Vec3(forward.x, 0, forward.z).normalize();
         const entity = new pc.Entity('wall-fireball');
         entity.addComponent('render', { type: 'sphere', material: this.fireMaterial, castShadows: false });
         entity.setPosition(origin.x, origin.y, origin.z);
@@ -169,7 +169,7 @@ export class WorldObjects {
             const to = { x: from.x + projectile.direction.x * projectile.speed * dt, y: from.y + projectile.direction.y * projectile.speed * dt, z: from.z + projectile.direction.z * projectile.speed * dt };
             projectile.age += dt;
             const wall = traceDungeonSegment(from, to, this.layout, 0.12);
-            const playerHit = segmentSphereIntersection(from, to, playerBody, 0.62);
+            const playerHit = segmentSphereIntersection(from, to, playerBody, 0.9);
             const hitPlayer = playerHit !== null && (!wall || playerHit < wall.t);
             if (hitPlayer || wall || projectile.age > 5) {
                 if (hitPlayer) onTrap({ ...projectile.trap, damage: projectile.damage });
@@ -240,7 +240,7 @@ export class WorldObjects {
                 continue;
             }
             const phase = trapPhase(this.time, trap.phase, trap.type, trap.period);
-            trap.spikes.setLocalScale(1, phase.active ? phase.extension : 0.01, 1);
+            trap.spikes.setLocalScale(1, Math.max(0.01, phase.extension), 1);
             trap.warning.emissiveIntensity = phase.active ? 4 : phase.warning ? 1.5 + Math.sin(this.time * 30) : 0.25;
             trap.warning.update();
             const near = Math.hypot(player.x - trap.position.x, player.z - trap.position.z) < 12 && Math.abs(player.y - 1.55 - trap.floor) < 1;

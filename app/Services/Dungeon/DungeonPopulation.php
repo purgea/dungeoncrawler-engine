@@ -112,7 +112,9 @@ final class DungeonPopulation
             unset($available[$key]);
         }
         $enemyKeys = $random->shuffle($enemyKeys);
-        $enemyCount = min(25, max(3, intdiv(count($tiles), 35)));
+        // Keep encounters frequent throughout the dungeon while retaining
+        // enough spacing for enemies to navigate and surround the player.
+        $enemyCount = min(40, max(6, intdiv(count($tiles), 24)));
         foreach ($enemyKeys as $key) {
             if (count($enemies) >= $enemyCount) {
                 break;
@@ -127,11 +129,11 @@ final class DungeonPopulation
         }
 
         $traps = [];
-        $trapCount = min(12, max(2, intdiv(count($tiles), 100)));
+        $trapCount = min(24, max(6, intdiv(count($tiles), 55)));
         $trapDefinitions = array_values($definitions['trap'] ?? []);
         $wallTrapDefinitions = array_values(array_filter($trapDefinitions, fn (array $definition): bool => ($definition['mount'] ?? null) === 'wall'));
         $floorTrapDefinitions = array_values(array_filter($trapDefinitions, fn (array $definition): bool => ($definition['mount'] ?? null) !== 'wall'));
-        $wallTrapLimit = min(count($wallTrapDefinitions), max(1, intdiv($trapCount, 3)));
+        $wallTrapLimit = $wallTrapDefinitions === [] ? 0 : max(1, intdiv($trapCount, 3));
         $wallTrapPlaced = 0;
 
         foreach ($random->shuffle(array_keys($available)) as $key) {
@@ -171,13 +173,15 @@ final class DungeonPopulation
                 'id' => 'trap-'.count($traps),
                 'type' => $trapDefinition['id'] ?? (count($traps) % 2 === 0 ? 'spikes' : 'fire'),
                 'damage' => $trapDefinition['damage'] ?? null,
-                'phase' => $random->int(0, 4000) / 1000,
+                'phase' => ($trapDefinition['id'] ?? null) === 'spikes' ? 0 : $random->int(0, 4000) / 1000,
                 ...$tiles[$key],
             ];
             unset($available[$key]);
         }
 
-        $supplyCount = max(6, (int) ceil(count($enemies) * 0.9));
+        // Keep optional powerups meaningful by spacing supply drops out
+        // independently of their type.
+        $supplyCount = max(4, (int) ceil(count($enemies) * 0.55));
         $supplyTypes = array_values(array_map(
             fn (array $definition): string => $definition['id'],
             array_filter($definitions['pickup'] ?? [], fn (array $definition): bool => ($definition['role'] ?? null) === 'supply'),

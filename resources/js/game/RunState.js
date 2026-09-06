@@ -129,9 +129,32 @@ export function formatTime(seconds) {
 }
 
 export function trapPhase(time, offset = 0, type = 'spikes', configuredPeriod = null) {
+    if (type === 'spikes') {
+        const idleDuration = 0.5;
+        const warningDuration = 0.25;
+        const riseDuration = 0.2;
+        const raisedDuration = 1;
+        const lowerDuration = 0.2;
+        const period = idleDuration + warningDuration + riseDuration + raisedDuration + lowerDuration;
+        const phase = ((time % period) + period) % period;
+        const warningEnd = idleDuration + warningDuration;
+        const riseEnd = warningEnd + riseDuration;
+        const raisedEnd = riseEnd + raisedDuration;
+        const lowerEnd = raisedEnd + lowerDuration;
+
+        if (phase < idleDuration) return { warning: false, active: false, extension: 0 };
+        if (phase < warningEnd) return { warning: true, active: false, extension: 0 };
+        if (phase < riseEnd) return { warning: false, active: true, extension: (phase - warningEnd) / riseDuration };
+        if (phase < raisedEnd) return { warning: false, active: true, extension: 1 };
+        if (phase < lowerEnd) return { warning: false, active: false, extension: 1 - (phase - raisedEnd) / lowerDuration };
+        return { warning: false, active: false, extension: 0 };
+    }
+
     const period = Number(configuredPeriod) > 0 ? Number(configuredPeriod) : 4;
     const phase = ((time + offset) % period + period) % period;
-    const warning = phase >= period - 2 && phase < period - 1.1;
-    const active = phase >= period - 1.1;
-    return { warning, active, extension: active ? Math.min(1, (phase - (period - 1.1)) / 0.12) : 0 };
+    const activeStart = period - 1.1;
+    const warning = phase >= period - 2 && phase < activeStart;
+    const active = phase >= activeStart;
+    const extensionDuration = 0.12;
+    return { warning, active, extension: active ? Math.min(1, (phase - activeStart) / extensionDuration) : 0 };
 }
