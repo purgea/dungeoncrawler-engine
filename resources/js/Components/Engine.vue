@@ -11,7 +11,7 @@ import GameHud from './GameHud.vue';
 import { colorFromRgb, fogTypeFromName } from '../lighting';
 import { WorldObjects } from '../game/WorldObjects.js';
 import { GameAudio } from '../game/Audio.js';
-import { graphicsLightDistanceTiles, graphicsResolutionScale, readSettings, saveSettings } from '../game/RunState.js';
+import { graphicsResolutionScale, readSettings, saveSettings } from '../game/RunState.js';
 
 const emit = defineEmits(['lock-change', 'checkpoint', 'complete', 'restart', 'next', 'home', 'mute-change']);
 const props = defineProps({
@@ -197,7 +197,7 @@ function updateWorld(rawDt) {
     if (!camera) return;
     playTime += dt;
     dungeonRenderer.value.updateDecorations(playerComponent.value.getRotation().yaw);
-    dungeonRenderer.value.updateLighting(dt, camera.getPosition(), graphicsLightDistanceTiles(settings.value.graphics.lighting));
+    dungeonRenderer.value.updateLighting(dt);
     weaponComponent.value.setMoving(playerComponent.value.isMoving());
     if (leftMouseHeld) weaponComponent.value.fire(camera);
     world.update(dt, camera, {
@@ -272,7 +272,7 @@ async function start() {
     playerComponent.value.setupPlayer(instance, canvas, { ...spawn, y: spawn.y + 1.55 }, config);
     playerComponent.value.restoreState(toRaw(props.initialState));
     playerComponent.value.setSensitivity(settings.value.sensitivity);
-    dungeonRenderer.value.updateLighting(0, playerComponent.value.getCamera().getPosition(), graphicsLightDistanceTiles(graphics.lighting));
+    dungeonRenderer.value.updateLighting(0);
     loaderComponent.value.setMessage('Summoning the restless…');
     enemyComponent.value.setupEnemies(instance, playerComponent.value, layout.enemies || [], config);
     playerComponent.value.setEnemySystem(enemyComponent.value);

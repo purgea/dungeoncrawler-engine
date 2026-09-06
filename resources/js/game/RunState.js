@@ -9,28 +9,18 @@ export const GRAPHICS_QUALITY_OPTIONS = [
     { id: 'balanced', label: 'Balanced', scale: 1 },
     { id: 'quality', label: 'Quality', scale: 1.25 },
 ];
-export const GRAPHICS_LIGHTING_OPTIONS = [
-    { id: 'nearby', label: 'Nearby lights', distanceTiles: 8 },
-    { id: 'extended', label: 'Extended lights', distanceTiles: 12 },
-];
-
 function defaultSettings() {
-    return { muted: false, sensitivity: 0.12, graphics: { quality: 'balanced', antialias: false, lighting: 'nearby' } };
+    return { muted: false, sensitivity: 0.12, graphics: { quality: 'balanced', antialias: false } };
 }
 
 function normalizeGraphics(graphics = {}) {
     const defaults = defaultSettings().graphics;
     const quality = GRAPHICS_QUALITY_OPTIONS.some(option => option.id === graphics?.quality) ? graphics.quality : defaults.quality;
-    const lighting = GRAPHICS_LIGHTING_OPTIONS.some(option => option.id === graphics?.lighting) ? graphics.lighting : defaults.lighting;
-    return { quality, antialias: graphics?.antialias === true, lighting };
+    return { quality, antialias: graphics?.antialias === true };
 }
 
 export function graphicsResolutionScale(quality) {
     return GRAPHICS_QUALITY_OPTIONS.find(option => option.id === quality)?.scale || 1;
-}
-
-export function graphicsLightDistanceTiles(lighting) {
-    return GRAPHICS_LIGHTING_OPTIONS.find(option => option.id === lighting)?.distanceTiles || 8;
 }
 
 export function campaignLevelUrl({ levelSlug, seed } = {}) {

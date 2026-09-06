@@ -56,7 +56,7 @@ final class GameDefinitionsSeeder extends Seeder
                 ]],
             ],
             'pickup' => [
-                ['slug' => 'health', 'sort_order' => 1, 'data' => ['name' => 'Vitality Flask', 'role' => 'supply', 'amount' => 30, 'color' => [0.8, 0.12, 0.16]]],
+                ['slug' => 'health', 'sort_order' => 1, 'data' => ['name' => 'Vitality Flask', 'role' => 'supply', 'amount' => 20, 'color' => [0.8, 0.12, 0.16]]],
                 ['slug' => 'armor', 'sort_order' => 2, 'data' => ['name' => 'Ward Shard', 'role' => 'supply', 'amount' => 25, 'color' => [0.34, 0.66, 0.76]]],
                 ['slug' => 'mana', 'sort_order' => 3, 'data' => ['name' => 'Aether Vial', 'role' => 'supply', 'amount' => 25, 'color' => [0.25, 0.48, 1]]],
                 ['slug' => 'sigil', 'sort_order' => 4, 'data' => ['name' => 'Ashen Sigil', 'role' => 'sigil', 'color' => [0.55, 0.9, 0.72]]],

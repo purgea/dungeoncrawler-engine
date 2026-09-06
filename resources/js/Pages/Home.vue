@@ -1,7 +1,7 @@
 <script setup>
 import { router } from '@inertiajs/vue3';
 import { ref } from 'vue';
-import { GRAPHICS_LIGHTING_OPTIONS, GRAPHICS_QUALITY_OPTIONS, readCheckpoint, readSettings, saveSettings, clearCheckpoint } from '../game/RunState.js';
+import { GRAPHICS_QUALITY_OPTIONS, readCheckpoint, readSettings, saveSettings, clearCheckpoint } from '../game/RunState.js';
 const props = defineProps({ world: { type: Object, default: null }, firstLevelUrl: { type: String, default: '/game?new=1' } });
 const checkpoint = ref(readCheckpoint());
 const settings = ref(readSettings());
@@ -51,12 +51,6 @@ function applyOptions() {
                     <label class="option-row">
                         <span><strong>Anti-aliasing</strong><small>Smooths edges at an additional GPU cost.</small></span>
                         <input v-model="draftGraphics.antialias" type="checkbox" aria-label="Anti-aliasing" />
-                    </label>
-                    <label class="option-row">
-                        <span><strong>Dynamic lighting</strong><small>Choose how far torch lights remain active.</small></span>
-                        <select v-model="draftGraphics.lighting" aria-label="Dynamic lighting">
-                            <option v-for="option in GRAPHICS_LIGHTING_OPTIONS" :key="option.id" :value="option.id">{{ option.label }}</option>
-                        </select>
                     </label>
                 </div>
                 <div class="options-actions">

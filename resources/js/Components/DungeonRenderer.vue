@@ -248,29 +248,14 @@ function addTorch(appInstance, position, edge, materials) {
         light: light.light,
         baseIntensity: torchLightConfig.intensity,
         phase: Math.random() * Math.PI * 2,
-        position: {
-            x: position.x - edge.dx * 0.72,
-            y: position.y + 0.75,
-            z: position.z - edge.dy * 0.72,
-        },
     });
     appInstance.root.addChild(torch);
 }
 
-function updateLighting(dt = 0, cameraPosition = null, lightDistanceTiles = 8) {
+function updateLighting(dt = 0) {
     lightingTime += dt;
     const flickerConfig = lighting.torch.flicker;
-    const lightDistance = tileSize * Math.max(1, Number(lightDistanceTiles) || 8);
-    const lightDistanceSquared = lightDistance * lightDistance;
-    torchLights.forEach(({ light, baseIntensity, phase, position }) => {
-        if (cameraPosition) {
-            const dx = cameraPosition.x - position.x;
-            const dy = cameraPosition.y - position.y;
-            const dz = cameraPosition.z - position.z;
-            const nearby = dx * dx + dz * dz <= lightDistanceSquared && Math.abs(dy) <= wallHeight * 1.5;
-            light.enabled = nearby;
-            if (!nearby) return;
-        }
+    torchLights.forEach(({ light, baseIntensity, phase }) => {
         if (!flickerConfig.enabled) {
             light.intensity = baseIntensity;
             return;
