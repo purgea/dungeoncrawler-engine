@@ -5,8 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\WorldStageLevel;
 use App\Services\Dungeon\DungeonGenerator;
 use App\Services\Dungeon\SeededRandom;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Inertia\Inertia;
 
 class DungeonController extends Controller
@@ -58,9 +58,9 @@ class DungeonController extends Controller
 
         return Inertia::render('Game', [
             'dungeon' => $generator->generate(
-                $level->data ?? [],
+                $level->data,
                 $seed,
-                $stage->lighting ?? [],
+                $stage->lighting,
                 $definitions,
             ),
             'campaign' => [
